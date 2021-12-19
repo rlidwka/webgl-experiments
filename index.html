@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>cool stuff</title>
+    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="icons/css/fontello.css">
+	</head>
+	<body>
+    <script>
+      var _err;
+      try { eval('window.__test__ ??= 1'); } catch (err) { _err = err; }
+      if (window.__test__ !== 1) {
+        alert('you have an old browser, please update');
+      }
+      delete window.__test__;
+    </script>
+    <div class="controls">
+      <button data-fn="select" class="icon-mouse-pointer" title="Select"></button>
+      <button data-fn="block-1" class="icon-block-1" title="Structural Beam (1x1)"></button>
+      <button data-fn="block-2" class="icon-block-2" title="Structural Beam (2x2)"></button>
+      <button data-fn="block-3" class="icon-block-3" title="Structural Beam (3x3)"></button>
+      <button data-fn="engine" class="icon-sun-filled" title="Main Rocket Engine"></button>
+      <button data-fn="tank" class="icon-water" title="Storage Tank"></button>
+    </div>
+    <div class="popover popover-tank">
+      <div class="popover-header">Storage Tank</div>
+    </div>
+    <script src="three.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

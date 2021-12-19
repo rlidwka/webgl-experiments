@@ -1,0 +1,152 @@
+{
+  "name": "",
+  "css_prefix_text": "icon-",
+  "css_use_suffix": false,
+  "hinting": true,
+  "units_per_em": 1000,
+  "ascent": 850,
+  "glyphs": [
+    {
+      "uid": "dd492243d64e21dfe16a92452f7861cb",
+      "css": "block-2",
+      "code": 59393,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "b1887b423d2fd15c345e090320c91ca0",
+      "css": "block-3",
+      "code": 59394,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "ec2869f7503592d2f6eecb7826e867a2",
+      "css": "block-1",
+      "code": 59392,
+      "src": "custom_icons",
+      "selected": true,
+      "svg": {
+        "path": "M929 571V786Q929 815 907 836T857 857H71Q42 857 21 836T0 786V143Q0 114 21 93T71 72H857Q886 72 907 93T929 143Z",
+        "width": 928.6
+      },
+      "search": [
+        "th-large"
+      ]
+    },
+    {
+      "uid": "0cd2582b8c93719d066ee0affd02ac78",
+      "css": "sort-alt-up",
+      "code": 61792,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "a685b79321ed1a641b6e3a9f77c74b98",
+      "css": "sort-alt-down",
+      "code": 61793,
+      "src": "custom_icons",
+      "selected": true,
+      "svg": {
+        "path": "M411 196Q411 190 405 183L227 5Q222 0 214 0 208 0 202 5L23 184Q15 193 19 203 23 214 36 214H143V982Q143 990 148 995 153 1000 161 1000H268Q276 1000 281 995 286 990 286 982V214H393Q401 214 406 209 411 204 411 196ZM1000 875V982Q1000 990 995 995 990 1000 982 1000H518Q510 1000 505 995 500 990 500 982V875Q500 867 505 862 510 857 518 857H982Q990 857 995 862 1000 867 1000 875ZM893 589V696Q893 704 888 709 883 714 875 714H518Q510 714 505 709 500 704 500 696V589Q500 581 505 576 510 571 518 571H875Q883 571 888 576 893 581 893 589ZM786 304V411Q786 418 781 423 776 428 768 429H518Q510 429 505 423 500 417 500 411V304Q500 296 505 291 510 286 518 286H768Q776 286 781 291 786 296 786 304ZM679 18V125Q679 133 674 138 669 143 661 143H518Q510 143 505 138 500 133 500 125V18Q500 10 505 5 510 0 518 0H661Q669 0 674 5 679 10 679 18Z",
+        "width": 1000
+      },
+      "search": [
+        "sort-alt-down"
+      ]
+    },
+    {
+      "uid": "5840fe162df3bcc8e390c58ef4e2acf9",
+      "css": "sun-filled",
+      "code": 59396,
+      "src": "typicons"
+    },
+    {
+      "uid": "36a1cee80657a9c66e8384dd57bed66c",
+      "css": "water",
+      "code": 59395,
+      "src": "entypo"
+    },
+    {
+      "uid": "6020aff067fc3c119cdd75daa5249220",
+      "css": "exchange",
+      "code": 61676,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "83458acd9f38d03ec0226ce82a83c0f4",
+      "css": "tint",
+      "code": 59397,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "823a9e02e643318116fea40a00190e4e",
+      "css": "asterisk",
+      "code": 59398,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "fbede3c5584282a0e9b131926dff71da",
+      "css": "cube",
+      "code": 61874,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "114fed43140e2b5ce42c48b95c19375b",
+      "css": "cloud",
+      "code": 59399,
+      "src": "entypo"
+    },
+    {
+      "uid": "f9efb0f1944c550cf8d38cdf4aba07c4",
+      "css": "cloud-1",
+      "code": 59400,
+      "src": "typicons"
+    },
+    {
+      "uid": "8e0220796066428d6ddea96a4f1b5131",
+      "css": "loop",
+      "code": 59401,
+      "src": "entypo"
+    },
+    {
+      "uid": "4efb719e797c54b3c58e5ae061d29d53",
+      "css": "droplet",
+      "code": 59402,
+      "src": "entypo"
+    },
+    {
+      "uid": "5f3a0ebf2d13f60ec7ed76eb41ba9bb2",
+      "css": "air",
+      "code": 59403,
+      "src": "entypo"
+    },
+    {
+      "uid": "6cea40aa6cc50057083e4f0a5b92410c",
+      "css": "flow-line",
+      "code": 59404,
+      "src": "entypo"
+    },
+    {
+      "uid": "3a89ddb1c81111c15d6c4e26cc3c546a",
+      "css": "cog-outline",
+      "code": 59405,
+      "src": "typicons"
+    },
+    {
+      "uid": "fd8d9ae4422e55d3ca23f55d9cf4b20a",
+      "css": "waves",
+      "code": 59406,
+      "src": "typicons"
+    },
+    {
+      "uid": "6f8cc29884d86ad170e2a6e7544fdced",
+      "css": "looped-square-interest",
+      "code": 59407,
+      "src": "typicons"
+    },
+    {
+      "uid": "12a80769cc7ac08e986deeafbe553054",
+      "css": "mouse-pointer",
+      "code": 62021,
+      "src": "fontawesome"
+    }
+  ]
+}
