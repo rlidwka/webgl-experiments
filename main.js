@@ -1,3 +1,47 @@
+import * as THREE from 'three'
+import { GLTFLoader } from './node_modules/three/examples/jsm/loaders/GLTFLoader.js'
+import './node_modules/knockout/build/output/knockout-latest.js'
+
+let active_popovers = new Set()
+
+class Popover {
+  constructor(cls) {
+    this.element = document.getElementsByClassName(cls)[0]
+    this.data = {}
+    this.init()
+    ko.applyBindings(this.data, this.element)
+  }
+
+  show(x, y) {
+    this.reset()
+    this.element.classList.add('show')
+    this.element.style.left = x + 'px'
+    this.element.style.top = y + 'px'
+    active_popovers.add(this)
+  }
+
+  hide() {
+    this.element.classList.remove('show')
+    active_popovers.delete(this)
+  }
+}
+
+let tank_popover = new class TankPopover extends Popover {
+  constructor() {
+    super('popover-tank')
+  }
+
+  init() {
+    this.data.contents = ko.observable()
+    this.data.temperature = ko.observable()
+  }
+
+  reset() {
+    this.data.contents(null)
+    this.data.temperature(10)
+  }
+}
+
 class Ship {
   constructor() {
     // coordinates are: [ z, x, y ]
@@ -24,12 +68,12 @@ class Ship {
   }
 
   draw() {
+    let group = new THREE.Group()
+    let vec = new THREE.Vector3()
     let material = new THREE.MeshBasicMaterial({ color: 0xffffff })
     material.map = texture
     let material_beam = new THREE.MeshBasicMaterial({ color: 0x777777 })
     material_beam.map = texture_beam
-    let group = new THREE.Group()
-    let vec = new THREE.Vector3()
 
     for (let z of Object.keys(this._voxels)) {
       z = +z
@@ -119,8 +163,12 @@ class Ship {
   }
 }
 
-class Floor {
+class Placeable {
+}
+
+class Floor extends Placeable {
   constructor(size) {
+    super()
     this.size = size
     this.offset = new THREE.Vector3(this.size / 2 - .5, this.size / 2 - .5, 0)
   }
@@ -163,8 +211,9 @@ class Floor {
   }
 }
 
-class Engine {
+class Engine extends Placeable {
   constructor() {
+    super()
     this.offset = new THREE.Vector3(0, .65, 0)
   }
 
@@ -224,8 +273,9 @@ class Engine {
   }
 }
 
-class Tank {
+class Tank extends Placeable {
   constructor() {
+    super()
     this.offset = new THREE.Vector3(0, 0, 0)
   }
 
@@ -238,10 +288,7 @@ class Tank {
   }
 
   click(ev) {
-    let popover = document.getElementsByClassName('popover-tank')[0]
-    popover.classList.add('show')
-    popover.style.left = ev.clientX + 'px'
-    popover.style.top = ev.clientY + 'px'
+    tank_popover.show(ev.clientX, ev.clientY)
   }
 
   place(ship, vec) {
@@ -335,6 +382,7 @@ ship.get_voxel(0, 0, 1).inside = true
 ship.get_voxel(0, 1, 1).inside = true
 ship.get_voxel(0, 1, 2).inside = true
 ship.get_voxel(0, 0, 2).inside = true
+new Tank().place(ship, new THREE.Vector3(1, 1, 0))
 
 let ship_group = ship.draw()
 scene.add(ship_group)
@@ -378,6 +426,7 @@ function event_world_position(ev) {
 }
 
 document.addEventListener('click', ev => {
+  if (ev.target !== renderer.domElement) return
   for (let x of Array.from(document.getElementsByClassName('show'))) x.classList.remove('show')
 
   let pos = event_world_position(ev)
@@ -401,6 +450,8 @@ document.addEventListener('click', ev => {
 })
 
 document.addEventListener('mousemove', ev => {
+  if (ev.target !== renderer.domElement) return
+
   let pos = event_world_position(ev)
 
   if (!selected_placeable) {
@@ -487,7 +538,6 @@ document.getElementsByClassName('controls')[0].addEventListener('click', ev => {
 
   controls_fn[ev.target.dataset.fn]()
   ev.target.classList.add('active')
-  ev.stopPropagation()
 })
 
 //document.getElementsByClassName('icon-water')[0].click()
@@ -507,17 +557,20 @@ document.addEventListener('keydown', ev => {
   } else if (ev.key === 'ArrowDown') {
     camera.position.y += .2
     action = true
+  } else if (ev.code === 'Escape') {
+    action = true
   }
 
   if (action) {
     renderer.domElement.style.cursor = 'default'
-    for (let x of Array.from(document.getElementsByClassName('show'))) x.classList.remove('show')
+    for (let x of active_popovers) x.hide()
   }
 })
 
 document.addEventListener('wheel', ev => {
+  if (ev.target !== renderer.domElement) return
   renderer.domElement.style.cursor = 'default'
-  for (let x of Array.from(document.getElementsByClassName('show'))) x.classList.remove('show')
+  for (let x of active_popovers) x.hide()
   camera.position.z += ev.deltaY / 200
 })
 
@@ -526,3 +579,24 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
+
+
+
+/*        new GLTFLoader()
+          .load( 'models/untitled.glb', function ( gltf ) {
+            scene.add( gltf.scene );
+          } );
+
+const light = new THREE.AmbientLight( 0x404040, 10 ); // soft white light
+scene.add( light );*/
+
+
+/*	function ( object ) {
+  					object.traverse( function ( child ) {
+console.log(child)
+						if ( child.isMesh ) child.material.map = texture_alum
+
+					} );
+
+		scene.add( object );
+	},*/

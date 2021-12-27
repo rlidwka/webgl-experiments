@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-	<head>
+  <head>
 		<meta charset="utf-8">
 		<title>cool stuff</title>
     <link rel="stylesheet" href="index.css">
@@ -15,18 +15,36 @@
       }
       delete window.__test__;
     </script>
+    <script type="importmap">
+      { "imports": {
+        "three": "./node_modules/three/build/three.module.js"
+      } }
+    </script>
     <div class="controls">
-      <button data-fn="select" class="icon-mouse-pointer" title="Select"></button>
-      <button data-fn="block-1" class="icon-block-1" title="Structural Beam (1x1)"></button>
-      <button data-fn="block-2" class="icon-block-2" title="Structural Beam (2x2)"></button>
-      <button data-fn="block-3" class="icon-block-3" title="Structural Beam (3x3)"></button>
-      <button data-fn="engine" class="icon-sun-filled" title="Main Rocket Engine"></button>
-      <button data-fn="tank" class="icon-water" title="Storage Tank"></button>
+      <button data-fn="select" class="btn icon-mouse-pointer" title="Select"></button>
+      <button data-fn="block-1" class="btn icon-block-1" title="Structural Beam (1x1)"></button>
+      <button data-fn="block-2" class="btn icon-block-2" title="Structural Beam (2x2)"></button>
+      <button data-fn="block-3" class="btn icon-block-3" title="Structural Beam (3x3)"></button>
+      <button data-fn="engine" class="btn icon-sun-filled" title="Main Rocket Engine"></button>
+      <button data-fn="tank" class="btn icon-water" title="Storage Tank"></button>
     </div>
     <div class="popover popover-tank">
       <div class="popover-header">Storage Tank</div>
+      <div class="popover-control">Contents:</div>
+      <select class="popover-control popover-tank-contents" data-bind="value: contents">
+        <option value=""></option>
+        <option value="h2">H₂</option>
+        <option value="o2">O₂</option>
+        <option value="h2o">H₂O</option>
+        <option value="ch4">CH₄</option>
+        <option value="c2h5oh">C₂H₅OH</option>
+        <option value="n2h4">N₂H₄</option>
+        <option value="nh3">NH₃</option>
+      </select>
+      <div class="popover-control">Temperature: <span class="popover-tank-temp-value" data-bind="text: temperature"></span>℃</div>
+      <input type="range" class="popover-control popover-tank-temp-range" min="-270" max="100" step="10" value="20" data-bind="value: temperature, valueUpdate: 'input'">
+      <div class="btn popover-control">Fill</div>
     </div>
-    <script src="three.js"></script>
-    <script src="main.js"></script>
+    <script src="main.js" type="module"></script>
   </body>
 </html>

@@ -1,3 +1,7 @@
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   overflow: hidden;
@@ -15,7 +19,7 @@ body {
   z-index: 1000;
 }
 
-.controls button {
+.btn, select {
   color: #333;
   background-color: #fff;
   border-color: #ccc;
@@ -26,7 +30,6 @@ body {
   font-size: 14px;
   font-weight: 400;
   line-height: 1.42857143;
-  text-align: center;
   white-space: nowrap;
   vertical-align: middle;
   touch-action: manipulation;
@@ -37,19 +40,23 @@ body {
   border-radius: 4px;
 }
 
-.controls button:hover {
+.btn {
+  text-align: center;
+}
+
+.btn:hover {
   color: #333;
   background-color: #e6e6e6;
   border-color: #adadad;
 }
 
-.controls button:active, .controls button.active, .controls button:hover {
+.btn:active, .btn.active {
   color: #333;
   background-color: #d4d4d4;
   border-color: #8c8c8c;
 }
 
-.controls button:active, .controls button.active {
+.btn:active, .btn.active {
   box-shadow: inset 0 3px 5px rgb(0 0 0 / 13%);
 }
 
@@ -65,4 +72,10 @@ body {
 
 .popover.show {
   display: block;
+}
+
+.popover-control {
+  display: block;
+  width: 100%;
+  margin-top: .5rem;
 }

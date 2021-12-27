@@ -1,5 +1,7 @@
 {
   "dependencies": {
-    "serve": "^13.0.2"
+    "knockout": "^3.5.1",
+    "serve": "^13.0.2",
+    "three": "^0.135.0"
   }
 }
