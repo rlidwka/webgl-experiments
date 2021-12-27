@@ -70,83 +70,8 @@ class Ship {
   draw() {
     let group = new THREE.Group()
     let vec = new THREE.Vector3()
-    let material = new THREE.MeshBasicMaterial({ color: 0xffffff })
-    material.map = texture
-    let material_beam = new THREE.MeshBasicMaterial({ color: 0x777777 })
-    material_beam.map = texture_beam
-
-    for (let z of Object.keys(this._voxels)) {
-      z = +z
-      for (let x of Object.keys(this._voxels[z])) {
-        x = +x
-        for (let y of Object.keys(this._voxels[z][x])) {
-          y = +y
-          if (!this._voxels[z][x][y].inside) continue
-
-          let geometry = new THREE.BoxGeometry()
-          let cube = new THREE.Mesh(geometry, material)
-          group.add(cube)
-          cube.position.x = x
-          cube.position.y = y
-          cube.position.z = z - .5 + .1
-          cube.scale.z = .1
-
-          if (!this._voxels[z][x][y - 1]?.inside) {
-            let cube = new THREE.Mesh(geometry, material_beam)
-            group.add(cube)
-            cube.position.x = x
-            cube.position.y = y - .5 + .05
-            cube.position.z = z
-            cube.scale.y = .1
-          }
-
-          if (!this._voxels[z][x][y + 1]?.inside) {
-            let cube = new THREE.Mesh(geometry, material_beam)
-            group.add(cube)
-            cube.position.x = x
-            cube.position.y = y + .5 - .05
-            cube.position.z = z
-            cube.scale.y = .1
-          }
-
-          if (!this._voxels[z][x - 1]?.[y]?.inside) {
-            let cube = new THREE.Mesh(geometry, material_beam)
-            group.add(cube)
-            cube.position.x = x - .5 + .05
-            cube.position.y = y
-            cube.position.z = z
-            cube.scale.x = .1
-            if (this._voxels[z][x][y - 1]?.inside) {
-              cube.scale.y += .1
-              cube.position.y -= .05
-            }
-            if (this._voxels[z][x][y + 1]?.inside) {
-              cube.scale.y += .1
-              cube.position.y += .05
-            }
-          }
-
-          if (!this._voxels[z][x + 1]?.[y]?.inside) {
-            let cube = new THREE.Mesh(geometry, material_beam)
-            group.add(cube)
-            cube.position.x = x + .5 - .05
-            cube.position.y = y
-            cube.position.z = z
-            cube.scale.x = .1
-            if (this._voxels[z][x][y - 1]?.inside) {
-              cube.scale.y += .1
-              cube.position.y -= .05
-            }
-            if (this._voxels[z][x][y + 1]?.inside) {
-              cube.scale.y += .1
-              cube.position.y += .05
-            }
-          }
-        }
-      }
-    }
-
     let draw_id = Math.random()
+
     for (let z of Object.keys(this._voxels)) {
       z = +z
       for (let x of Object.keys(this._voxels[z])) {
@@ -208,16 +133,89 @@ class Floor extends Placeable {
     for (let dx = 0; dx < this.size; dx++) {
       for (let dy = 0; dy < this.size; dy++) {
         ship.get_voxel(vec.z, vec.x + dx, vec.y + dy).inside = true
+        ship.get_voxel(vec.z, vec.x + dx, vec.y + dy).drawables.add(this)
       }
     }
   }
 
   draw(id = 0, vec = null) {
-    let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
-    let material = new THREE.MeshBasicMaterial()
-    let mesh = new THREE.Mesh(geometry, material)
+    if (!vec) {
+      let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
+      let material = new THREE.MeshBasicMaterial()
+      let mesh = new THREE.Mesh(geometry, material)
 
-    return [ mesh, material ]
+      return [ mesh, material ]
+    }
+
+    let group = new THREE.Group()
+    let material = new THREE.MeshBasicMaterial({ color: 0xffffff })
+    material.map = texture
+    let material_beam = new THREE.MeshBasicMaterial({ color: 0x777777 })
+    material_beam.map = texture_beam
+
+    let { x, y, z } = vec
+
+    let geometry = new THREE.BoxGeometry()
+    let cube = new THREE.Mesh(geometry, material)
+    group.add(cube)
+    cube.position.x = x
+    cube.position.y = y
+    cube.position.z = z - .5 + .1
+    cube.scale.z = .1
+
+    if (!ship.maybe_voxel(z, x, y - 1)?.inside) {
+      let cube = new THREE.Mesh(geometry, material_beam)
+      group.add(cube)
+      cube.position.x = x
+      cube.position.y = y - .5 + .05
+      cube.position.z = z
+      cube.scale.y = .1
+    }
+
+    if (!ship.maybe_voxel(z, x, y + 1)?.inside) {
+      let cube = new THREE.Mesh(geometry, material_beam)
+      group.add(cube)
+      cube.position.x = x
+      cube.position.y = y + .5 - .05
+      cube.position.z = z
+      cube.scale.y = .1
+    }
+
+    if (!ship.maybe_voxel(z, x - 1, y)?.inside) {
+      let cube = new THREE.Mesh(geometry, material_beam)
+      group.add(cube)
+      cube.position.x = x - .5 + .05
+      cube.position.y = y
+      cube.position.z = z
+      cube.scale.x = .1
+      if (ship.maybe_voxel(z, x, y - 1)?.inside) {
+        cube.scale.y += .1
+        cube.position.y -= .05
+      }
+      if (ship.maybe_voxel(z, x, y + 1)?.inside) {
+        cube.scale.y += .1
+        cube.position.y += .05
+      }
+    }
+
+    if (!ship.maybe_voxel(z, x + 1, y)?.inside) {
+      let cube = new THREE.Mesh(geometry, material_beam)
+      group.add(cube)
+      cube.position.x = x + .5 - .05
+      cube.position.y = y
+      cube.position.z = z
+      cube.scale.x = .1
+      if (ship.maybe_voxel(z, x, y - 1)?.inside) {
+        cube.scale.y += .1
+        cube.position.y -= .05
+      }
+      if (ship.maybe_voxel(z, x, y + 1)?.inside) {
+        cube.scale.y += .1
+        cube.position.y += .05
+      }
+    }
+
+    return [ group, material ]
   }
 }
 
@@ -379,12 +377,12 @@ let scene = new THREE.Scene()
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
 
 let ship = new Ship()
-ship.get_voxel(0, 0, 0).inside = true
-ship.get_voxel(0, 1, 0).inside = true
-ship.get_voxel(0, 0, 1).inside = true
-ship.get_voxel(0, 1, 1).inside = true
-ship.get_voxel(0, 1, 2).inside = true
-ship.get_voxel(0, 0, 2).inside = true
+new Floor(1).place(ship, new THREE.Vector3(0, 0, 0))
+new Floor(1).place(ship, new THREE.Vector3(1, 0, 0))
+new Floor(1).place(ship, new THREE.Vector3(0, 1, 0))
+new Floor(1).place(ship, new THREE.Vector3(1, 1, 0))
+new Floor(1).place(ship, new THREE.Vector3(1, 2, 0))
+new Floor(1).place(ship, new THREE.Vector3(0, 2, 0))
 new Tank().place(ship, new THREE.Vector3(1, 1, 0))
 
 let ship_group = ship.draw()
