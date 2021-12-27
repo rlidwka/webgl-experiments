@@ -60,11 +60,11 @@ class Ship {
   }
 
   is_inside(z, x, y) {
-   return !!this._voxels[z]?.[x]?.[y]?.inside
+    return !!this._voxels[z]?.[x]?.[y]?.inside
   }
 
   is_empty(z, x, y) {
-   return !this._voxels[z]?.[x]?.[y]?.contains
+    return !this._voxels[z]?.[x]?.[y]?.contains
   }
 
   draw() {
@@ -208,6 +208,14 @@ class Floor extends Placeable {
         ship.get_voxel(vec.z, vec.x + dx, vec.y + dy).inside = true
       }
     }
+  }
+
+  draw(vec = null) {
+    let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
+    let material = new THREE.MeshBasicMaterial()
+    let mesh = new THREE.Mesh(geometry, material)
+
+    return [ mesh, material ]
   }
 }
 
@@ -476,29 +484,11 @@ document.addEventListener('mousemove', ev => {
   }
 })
 
-function select_block(size) {
+function select_class(placeable_class, ...args) {
   return function () {
     if (selected_mesh) scene.remove(selected_mesh)
 
-    let geometry = new THREE.BoxGeometry(size, size, 1)
-    selected_material = new THREE.MeshBasicMaterial()
-
-    selected_material.opacity = 0.7
-    selected_material.transparent = true
-
-    selected_mesh = new THREE.Mesh(geometry, selected_material)
-    scene.add(selected_mesh)
-    selected_mesh.visible = false
-
-    selected_placeable = new Floor(size)
-  }
-}
-
-function select_class(placeable_class) {
-  return function () {
-    if (selected_mesh) scene.remove(selected_mesh)
-
-    selected_placeable = new placeable_class()
+    selected_placeable = new placeable_class(...args)
 
     ;[ selected_mesh, selected_material ] = selected_placeable.draw()
 
@@ -520,9 +510,9 @@ function select_element() {
 
 let controls_fn = {
   'select': select_element,
-  'block-1': select_block(1),
-  'block-2': select_block(2),
-  'block-3': select_block(3),
+  'block-1': select_class(Floor, 1),
+  'block-2': select_class(Floor, 2),
+  'block-3': select_class(Floor, 3),
   'engine': select_class(Engine),
   'tank': select_class(Tank),
 }
