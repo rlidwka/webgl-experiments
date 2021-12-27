@@ -51,7 +51,7 @@ class Ship {
   get_voxel(z, x, y) {
     this._voxels[z] ??= {}
     this._voxels[z][x] ??= {}
-    this._voxels[z][x][y] ??= {}
+    this._voxels[z][x][y] ??= { drawables: new Set() }
     return this._voxels[z][x][y]
   }
 
@@ -146,15 +146,17 @@ class Ship {
       }
     }
 
+    let draw_id = Math.random()
     for (let z of Object.keys(this._voxels)) {
       z = +z
       for (let x of Object.keys(this._voxels[z])) {
         x = +x
         for (let y of Object.keys(this._voxels[z][x])) {
           y = +y
-          if (!this._voxels[z][x][y].draw) continue
-          let mesh = this._voxels[z][x][y].contains.draw(new THREE.Vector3(x, y, z))[0]
-          group.add(mesh)
+          for (let drawable of this._voxels[z][x][y].drawables) {
+            let mesh = drawable.draw(draw_id, new THREE.Vector3(x, y, z))?.[0]
+            if (mesh) group.add(mesh)
+          }
         }
       }
     }
@@ -210,7 +212,7 @@ class Floor extends Placeable {
     }
   }
 
-  draw(vec = null) {
+  draw(id = 0, vec = null) {
     let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
     let material = new THREE.MeshBasicMaterial()
     let mesh = new THREE.Mesh(geometry, material)
@@ -242,11 +244,11 @@ class Engine extends Placeable {
     vec = vec.clone().sub(this.offset)
 
     ship.get_voxel(vec.z, vec.x, vec.y).contains = this
-    ship.get_voxel(vec.z, vec.x, vec.y).draw = true
+    ship.get_voxel(vec.z, vec.x, vec.y).drawables.add(this)
     ship.get_voxel(vec.z, vec.x, vec.y + 1).contains = this
   }
 
-  draw(vec = null) {
+  draw(id = 0, vec = null) {
     let geometry = new THREE.BoxGeometry(.7, .5, .7)
     let material = new THREE.MeshBasicMaterial()
 
@@ -303,22 +305,15 @@ class Tank extends Placeable {
     vec = vec.clone().sub(this.offset)
 
     ship.get_voxel(vec.z, vec.x, vec.y).contains = this
-    ship.get_voxel(vec.z, vec.x, vec.y).draw = true
-
-    for (let dy = 1; ; dy++) {
-      let v = ship.maybe_voxel(vec.z, vec.x, vec.y + dy)
-      if (!(v?.contains instanceof this.constructor)) break
-      v.draw = false
-    }
-
-    for (let dy = -1; ; dy--) {
-      let v = ship.maybe_voxel(vec.z, vec.x, vec.y + dy)
-      if (!(v?.contains instanceof this.constructor)) break
-      ship.get_voxel(vec.z, vec.x, vec.y + dy + 1).draw = false
-    }
+    ship.get_voxel(vec.z, vec.x, vec.y).drawables.add(this)
   }
 
-  draw(vec = null) {
+  draw(id = 0, vec = null) {
+    if (vec) {
+      let v = ship.maybe_voxel(vec.z, vec.x, vec.y - 1)
+      if (v?.contains instanceof this.constructor) return
+    }
+
     let height = 0
 
     if (vec) {
