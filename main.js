@@ -1,8 +1,30 @@
 import * as THREE from 'three'
 import { GLTFLoader } from './node_modules/three/examples/jsm/loaders/GLTFLoader.js'
+import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js';
 import './node_modules/knockout/build/output/knockout-latest.js'
 
+const fuel_types = {
+  h2:     { text: 'H₂' },
+  o2:     { text: 'O₂' },
+  h2o:    { text: 'H₂O' },
+  ch4:    { text: 'CH₄' },
+  c2h5oh: { text: 'C₂H₅OH' },
+  n2h4:   { text: 'N₂H₄' },
+  nh3:    { text: 'NH₃' }
+}
+
 let active_popovers = new Set()
+let models = {}
+
+await Promise.all([ 'engine', 'tank' ].map(file => {
+  return new Promise(resolve => {
+    new GLTFLoader()
+      .load(`models/${file}.glb`, function (gltf) {
+        models[file] = gltf
+        resolve()
+      })
+  })
+}))
 
 class Popover {
   constructor(cls) {
@@ -13,7 +35,6 @@ class Popover {
   }
 
   show(x, y) {
-    this.reset()
     this.element.classList.add('show')
     this.element.style.left = x + 'px'
     this.element.style.top = y + 'px'
@@ -29,16 +50,42 @@ class Popover {
 let tank_popover = new class TankPopover extends Popover {
   constructor() {
     super('popover-tank')
+    this.assign = () => {}
   }
 
   init() {
-    this.data.contents = ko.observable()
+    this.data.contents    = ko.observable()
     this.data.temperature = ko.observable()
+    this.data.full        = ko.observable()
+
+    this.data.contents_text = ko.computed(() => fuel_types[this.data.contents()]?.text)
+
+    this.data.fill  = () => this.fill()
+    this.data.empty = () => this.empty()
+
+    this.data.fuel_types = ko.observableArray(
+      Object.entries(fuel_types).map(([ name, value ]) => ({ name, value: value.text }))
+    )
   }
 
-  reset() {
-    this.data.contents(null)
-    this.data.temperature(10)
+  reset(liquid) {
+    this.data.contents(liquid?.type)
+    this.data.temperature(liquid?.temperature ?? 20)
+    this.data.full(Boolean(liquid?.type))
+  }
+
+  fill() {
+    if (!this.data.contents()) return
+    this.data.full(true)
+    this.assign({
+      type: this.data.contents(),
+      temperature: this.data.temperature()
+    })
+  }
+
+  empty() {
+    this.data.full(false)
+    this.assign(null)
   }
 }
 
@@ -67,24 +114,33 @@ class Ship {
     return !this._voxels[z]?.[x]?.[y]?.contains
   }
 
-  draw() {
-    let group = new THREE.Group()
+  each(fn) {
     let vec = new THREE.Vector3()
-    let draw_id = Math.random()
 
     for (let z of Object.keys(this._voxels)) {
       z = +z
       for (let x of Object.keys(this._voxels[z])) {
         x = +x
         for (let y of Object.keys(this._voxels[z][x])) {
-          y = +y
-          for (let drawable of this._voxels[z][x][y].drawables) {
-            let mesh = drawable.draw(draw_id, new THREE.Vector3(x, y, z))?.[0]
-            if (mesh) group.add(mesh)
-          }
+          vec.x = +x
+          vec.y = +y
+          vec.z = +z
+          fn(this._voxels[z][x][y], vec)
         }
       }
     }
+  }
+
+  draw() {
+    let group = new THREE.Group()
+    let draw_id = Math.random()
+
+    this.each((vox, vec) => {
+      for (let drawable of vox.drawables) {
+        let mesh = drawable.draw(draw_id, vec)?.[0]
+        if (mesh) group.add(mesh)
+      }
+    })
 
     return group
   }
@@ -222,7 +278,7 @@ class Floor extends Placeable {
 class Engine extends Placeable {
   constructor() {
     super()
-    this.offset = new THREE.Vector3(0, .65, 0)
+    this.offset = new THREE.Vector3(0, 1 - .22, 0)
   }
 
   verify(ship, vec) {
@@ -247,37 +303,28 @@ class Engine extends Placeable {
   }
 
   draw(id = 0, vec = null) {
-    let geometry = new THREE.BoxGeometry(.7, .5, .7)
+    let engine = models.engine.scene.clone()
+
+    engine.rotation.x = Math.PI / 2
+    engine.scale.x = .6
+    engine.scale.y = .6
+    engine.scale.z = .6
+
+    if (vec) {
+      engine.position.add(this.offset)
+      engine.position.add(vec)
+    }
+
     let material = new THREE.MeshBasicMaterial()
 
-    let nozzle_geometry = new THREE.ConeGeometry(.4, 1.2, 30)
-
-    let mesh = new THREE.Group()
-
-    if (vec) {
-      material = new THREE.MeshBasicMaterial({ color: 0x996000 })
-      material.map = texture_alum
+    if (!vec) {
+      engine.traverse(mesh => {
+        if (mesh.type !== 'Mesh') return
+        mesh.material = material
+      })
     }
 
-    let spacer = new THREE.Mesh(geometry, material)
-
-    if (vec) {
-      material = new THREE.MeshBasicMaterial({ color: 0xffffff })
-      material.map = texture_alum
-    }
-
-    let nozzle = new THREE.Mesh(nozzle_geometry, material)
-    nozzle.position.y -= .35
-
-    mesh.add(spacer)
-    mesh.add(nozzle)
-
-    if (vec) {
-      mesh.position.add(this.offset)
-      mesh.position.add(vec)
-    }
-
-    return [ mesh, material ]
+    return [ engine, material ]
   }
 }
 
@@ -285,6 +332,8 @@ class Tank extends Placeable {
   constructor() {
     super()
     this.offset = new THREE.Vector3(0, 0, 0)
+    this.deferred = null
+    this.liquid = null
   }
 
   verify(ship, vec) {
@@ -296,6 +345,13 @@ class Tank extends Placeable {
   }
 
   click(ev) {
+    if (this.deferred) return this.deferred.click(ev)
+
+    tank_popover.assign = value => {
+      this.liquid = value
+      ship_draw()
+    }
+    tank_popover.reset(this.liquid)
     tank_popover.show(ev.clientX, ev.clientY)
   }
 
@@ -304,13 +360,95 @@ class Tank extends Placeable {
 
     ship.get_voxel(vec.z, vec.x, vec.y).contains = this
     ship.get_voxel(vec.z, vec.x, vec.y).drawables.add(this)
+
+    ship.each((vox, vec) => {
+      if (vox.contains instanceof this.constructor) vox.contains.unlink()
+    })
+
+    ship.each((vox, vec) => {
+      if (vox.contains instanceof this.constructor) vox.contains.link(ship, vec)
+    })
+  }
+
+  link(ship, vec) {
+    let v = ship.maybe_voxel(vec.z, vec.x, vec.y - 1)
+    if (v?.contains instanceof this.constructor) {
+      this.deferred = v.contains.deferred || v.contains
+    }
+  }
+
+  unlink(ship) {
+    if (this.deferred) this.deferred.liquid = this.liquid
+    this.deferred = null
   }
 
   draw(id = 0, vec = null) {
+    if (this.deferred) return
+
+    let height = 0
+
     if (vec) {
-      let v = ship.maybe_voxel(vec.z, vec.x, vec.y - 1)
-      if (v?.contains instanceof this.constructor) return
+      for (let dy = 1; ; dy++) {
+        let v = ship.maybe_voxel(vec.z, vec.x, vec.y + dy)
+        if (!(v?.contains instanceof this.constructor)) break
+        height++
+      }
     }
+
+    let tank = models.tank.scene.clone()
+
+    tank.rotation.x = Math.PI / 2
+    tank.scale.x = .25
+    tank.scale.y = .25
+    tank.scale.z = .25
+    tank.position.z = -.1
+    tank.position.y += height / 2
+
+    if (vec) {
+      tank.position.add(this.offset)
+      tank.position.add(vec)
+    }
+
+    let material = new THREE.MeshBasicMaterial()
+    material.color.set(0x888888)
+    material.map = texture_alum
+
+    tank.traverse(mesh => {
+      if (mesh.type !== 'Mesh') return
+
+      if (mesh.name === 'side-1') {
+        mesh.position.z += height * 2
+      }
+
+      if (mesh.name === 'side-2') {
+        mesh.position.z -= height * 2
+      }
+
+      if (mesh.name === 'base') {
+        mesh.position.z += height * 2
+        mesh.scale.y *= 1 + height * 2
+      }
+
+      if (mesh.name === 'material') {
+        mesh.position.z += height * 2
+        mesh.scale.y *= 1 + height * 2
+        mesh.visible = !!this.liquid
+        return
+      }
+
+      mesh.material = material
+    })
+
+    return [ tank, material ]
+
+
+
+
+
+
+
+
+/*
 
     let height = 0
 
@@ -352,7 +490,7 @@ class Tank extends Placeable {
       mesh.position.y += height / 2
     }
 
-    return [ mesh, material ]
+    return [ mesh, material ]*/
   }
 }
 
@@ -376,6 +514,9 @@ texture_beam.repeat.set(1, 1)
 let scene = new THREE.Scene()
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
 
+const light = new THREE.AmbientLight(0x404040, 2);
+scene.add(light);
+
 let ship = new Ship()
 new Floor(1).place(ship, new THREE.Vector3(0, 0, 0))
 new Floor(1).place(ship, new THREE.Vector3(1, 0, 0))
@@ -383,14 +524,33 @@ new Floor(1).place(ship, new THREE.Vector3(0, 1, 0))
 new Floor(1).place(ship, new THREE.Vector3(1, 1, 0))
 new Floor(1).place(ship, new THREE.Vector3(1, 2, 0))
 new Floor(1).place(ship, new THREE.Vector3(0, 2, 0))
+new Floor(1).place(ship, new THREE.Vector3(2, 0, 0))
+new Floor(1).place(ship, new THREE.Vector3(3, 0, 0))
+new Floor(1).place(ship, new THREE.Vector3(-1, 0, 0))
+new Tank().place(ship, new THREE.Vector3(1, 0, 0))
 new Tank().place(ship, new THREE.Vector3(1, 1, 0))
+new Tank().place(ship, new THREE.Vector3(0, 1, 0))
+new Tank().place(ship, new THREE.Vector3(1, 2, 0))
 
-let ship_group = ship.draw()
-scene.add(ship_group)
+function ship_draw() {
+  if (ship_group) scene.remove(ship_group)
+  ship_group = ship.draw()
+  scene.add(ship_group)
+}
+
+let ship_group
+ship_draw()
 
 let renderer = new THREE.WebGLRenderer()
 renderer.setSize(window.innerWidth, window.innerHeight)
 document.body.appendChild(renderer.domElement)
+
+let	controls = new OrbitControls(camera, renderer.domElement)
+controls.enableDamping = true
+controls.minDistance = 1
+controls.maxDistance = 10
+controls.target.set(0, 0.5, 0)
+controls.update()
 
 let selected_material
 let selected_mesh
@@ -401,6 +561,7 @@ camera.position.z = 5
 function animate() {
 	requestAnimationFrame(animate)
 	renderer.render(scene, camera)
+  controls.update()
 }
 animate()
 
@@ -443,9 +604,7 @@ document.addEventListener('click', ev => {
 
   if (free_pos) {
     selected_placeable.place(ship, free_pos)
-    scene.remove(ship_group)
-    ship_group = ship.draw()
-    scene.add(ship_group)
+    ship_draw()
     selected_material.color.set(0xaa0000)
   }  
 })
@@ -564,6 +723,15 @@ window.addEventListener('resize', () => {
 })
 
 
+/*new GLTFLoader()
+  .load('models/engine.glb', function (gltf) {
+ gltf.scene.rotation.x = Math.PI / 2
+ gltf.scene.scale.x = .6
+ gltf.scene.scale.y = .6
+ gltf.scene.scale.z = .6
+ gltf.scene.position.y -= .22
+            scene.add( gltf.scene );
+  })
 
 /*        new GLTFLoader()
           .load( 'models/untitled.glb', function ( gltf ) {

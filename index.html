@@ -31,19 +31,16 @@
     <div class="popover popover-tank">
       <div class="popover-header">Storage Tank</div>
       <div class="popover-control">Contents:</div>
-      <select class="popover-control popover-tank-contents" data-bind="value: contents">
-        <option value=""></option>
-        <option value="h2">H₂</option>
-        <option value="o2">O₂</option>
-        <option value="h2o">H₂O</option>
-        <option value="ch4">CH₄</option>
-        <option value="c2h5oh">C₂H₅OH</option>
-        <option value="n2h4">N₂H₄</option>
-        <option value="nh3">NH₃</option>
+      <div class="popover-control" data-bind="text: contents_text, visible: full()"></div>
+      <select class="popover-control popover-tank-contents"
+        data-bind="value: contents, options: fuel_types, optionsValue: 'name', optionsText: 'value', valueAllowUnset: true, visible: !full()">
       </select>
-      <div class="popover-control">Temperature: <span class="popover-tank-temp-value" data-bind="text: temperature"></span>℃</div>
-      <input type="range" class="popover-control popover-tank-temp-range" min="-270" max="100" step="10" value="20" data-bind="value: temperature, valueUpdate: 'input'">
-      <div class="btn popover-control">Fill</div>
+      <div class="popover-control">Temperature: 
+        <span class="popover-value"><span class="popover-tank-temp-value" data-bind="text: temperature"></span>℃</span>
+      </div>
+      <input type="range" class="popover-control popover-tank-temp-range" min="-270" max="100" step="10" value="20" data-bind="value: temperature, valueUpdate: 'input', visible: !full()">
+      <div class="btn popover-control" data-bind="click: fill, visible: !full()">Fill</div>
+      <div class="btn popover-control" data-bind="click: empty, visible: full()">Empty</div>
     </div>
     <script src="main.js" type="module"></script>
   </body>
