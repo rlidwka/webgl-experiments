@@ -135,8 +135,6 @@ class Ship {
   }
 
   armor(vox, vec, dx, dy, dz) {
-  if (!dx&&!dy) return
-
     if (vec.z + dz > ship.level) return
     if (this.maybe_voxel(vec.z + dz, vec.x + dx, vec.y + dy)) return
 
@@ -152,12 +150,21 @@ class Ship {
     points.push(new THREE.Vector3(3, 3, 0))
 
     let geometry = new ConvexGeometry(points)
-    let material = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide })
-    material.map = texture_gl
-    material.opacity = 1
-    material.transparent = true
-    let mesh = new THREE.Mesh(geometry, material)
 
+    let uv = []
+    let position = geometry.attributes.position.array
+
+    for (let i = 0; i < position.length; i += 3) {
+      uv.push(position[i] / 6 + .5)
+      uv.push(position[i + 1] / 6 + .5)
+    }
+
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+
+    let material = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    material.map = texture_gl
+
+    let mesh = new THREE.Mesh(geometry, material)
     let t
 
     t = 1/6
@@ -170,9 +177,9 @@ class Ship {
     mesh.position.y = vec.y + dy*t
     mesh.position.z = vec.z + dz*t
 
-    mesh.rotation.y = Math.PI/2 * Math.sign(dx)
+    mesh.rotation.y = Math.PI/2 * Math.sign(dx) + Math.PI * Math.sign(dz)
     mesh.rotation.x = -Math.PI/2 * Math.sign(dy)
-    mesh.rotation.z = Math.PI/2 * Math.sign(dz)
+    mesh.rotation.z = 0
 
     return mesh
 
@@ -703,7 +710,7 @@ let renderer = new THREE.WebGLRenderer()
 renderer.setSize(window.innerWidth, window.innerHeight)
 document.body.appendChild(renderer.domElement)
 
-let	controls = new OrbitControls(camera, renderer.domElement)
+let controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true
 controls.minDistance = 1
 controls.maxDistance = 10
@@ -717,8 +724,8 @@ let selected_placeable
 camera.position.z = 5
 
 function animate() {
-	requestAnimationFrame(animate)
-	renderer.render(scene, camera)
+  requestAnimationFrame(animate)
+  renderer.render(scene, camera)
   controls.update()
 }
 animate()
@@ -842,7 +849,7 @@ document.getElementsByClassName('controls')[0].addEventListener('click', ev => {
   ev.target.classList.add('active')
 })
 
-document.getElementsByClassName('icon-sort-alt-down')[0].click()
+//document.getElementsByClassName('icon-sort-alt-down')[0].click()
 
 document.addEventListener('keydown', ev => {
   let action = false
