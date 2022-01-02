@@ -108,7 +108,7 @@ class Ship {
   }
 
   is_inside(z, x, y) {
-    return !!this._voxels[z]?.[x]?.[y]?.inside
+    return !!this._voxels[z]?.[x]?.[y]?.deck
   }
 
   is_empty(z, x, y) {
@@ -154,10 +154,11 @@ class Placeable {
   }
 }
 
-class Floor extends Placeable {
+class Deck extends Placeable {
   constructor(size) {
     super()
     this.size = size
+    this.floor = true
     this.offset = new THREE.Vector3(this.size / 2 - .5, this.size / 2 - .5, 0)
   }
 
@@ -197,7 +198,7 @@ class Floor extends Placeable {
 
     for (let dx = 0; dx < this.size; dx++) {
       for (let dy = 0; dy < this.size; dy++) {
-        ship.get_voxel(vec.z, vec.x + dx, vec.y + dy).inside = true
+        ship.get_voxel(vec.z, vec.x + dx, vec.y + dy).deck = this
         ship.get_voxel(vec.z, vec.x + dx, vec.y + dy).drawables.add(this)
       }
     }
@@ -213,10 +214,6 @@ class Floor extends Placeable {
     }
 
     let group = new THREE.Group()
-    let material = new THREE.MeshBasicMaterial({ color: 0xffffff })
-    material.map = texture
-    material.polygonOffset = true
-    material.polygonOffsetFactor = .01
 
     let material_beam1 = new THREE.MeshBasicMaterial({ color: 0x777777 })
     material_beam1.map = texture_beam
@@ -227,68 +224,78 @@ class Floor extends Placeable {
     material_beam2.map = texture_beam
 
     let { x, y, z } = vec
-
     let geometry = new THREE.BoxGeometry()
-    let cube = new THREE.Mesh(geometry, material)
-    group.add(cube)
-    cube.position.x = x
-    cube.position.y = y
-    cube.position.z = z - .5 + .1
-    cube.scale.z = .1
 
-    if (!ship.maybe_voxel(z, x, y - 1)?.inside) {
+    if (this.floor) {
+      let material = new THREE.MeshBasicMaterial({ color: 0xffffff })
+      material.map = texture
+      material.polygonOffset = true
+      material.polygonOffsetFactor = .01
+      let cube = new THREE.Mesh(geometry, material)
+      group.add(cube)
+      cube.position.x = x
+      cube.position.y = y
+      cube.position.z = z - .5 + .1
+      cube.scale.z = .1
+    }
+
+    if (!ship.maybe_voxel(z, x, y - 1)?.deck) {
       let cube = new THREE.Mesh(geometry, material_beam1)
       group.add(cube)
       cube.position.x = x
       cube.position.y = y - .5 + .05
-      cube.position.z = z
+      cube.position.z = z + .05
       cube.scale.y = .1
+      cube.scale.z = 1.1
     }
 
-    if (!ship.maybe_voxel(z, x, y + 1)?.inside) {
+    if (!ship.maybe_voxel(z, x, y + 1)?.deck) {
       let cube = new THREE.Mesh(geometry, material_beam1)
       group.add(cube)
       cube.position.x = x
       cube.position.y = y + .5 - .05
-      cube.position.z = z
+      cube.position.z = z + .05
       cube.scale.y = .1
+      cube.scale.z = 1.1
     }
 
-    if (!ship.maybe_voxel(z, x - 1, y)?.inside) {
+    if (!ship.maybe_voxel(z, x - 1, y)?.deck) {
       let cube = new THREE.Mesh(geometry, material_beam2)
       group.add(cube)
       cube.position.x = x - .5 + .05
       cube.position.y = y
-      cube.position.z = z
+      cube.position.z = z + .05
       cube.scale.x = .1
-      if (ship.maybe_voxel(z, x, y - 1)?.inside) {
+      cube.scale.z = 1.1
+      if (ship.maybe_voxel(z, x, y - 1)?.deck) {
         cube.scale.y += .1
         cube.position.y -= .05
       }
-      if (ship.maybe_voxel(z, x, y + 1)?.inside) {
+      if (ship.maybe_voxel(z, x, y + 1)?.deck) {
         cube.scale.y += .1
         cube.position.y += .05
       }
     }
 
-    if (!ship.maybe_voxel(z, x + 1, y)?.inside) {
+    if (!ship.maybe_voxel(z, x + 1, y)?.deck) {
       let cube = new THREE.Mesh(geometry, material_beam2)
       group.add(cube)
       cube.position.x = x + .5 - .05
       cube.position.y = y
-      cube.position.z = z
+      cube.position.z = z + .05
       cube.scale.x = .1
-      if (ship.maybe_voxel(z, x, y - 1)?.inside) {
+      cube.scale.z = 1.1
+      if (ship.maybe_voxel(z, x, y - 1)?.deck) {
         cube.scale.y += .1
         cube.position.y -= .05
       }
-      if (ship.maybe_voxel(z, x, y + 1)?.inside) {
+      if (ship.maybe_voxel(z, x, y + 1)?.deck) {
         cube.scale.y += .1
         cube.position.y += .05
       }
     }
 
-    return [ group, material ]
+    return [ group ]
   }
 }
 
@@ -296,7 +303,8 @@ class Stairs extends Placeable {
   constructor(direction) {
     super()
     this.direction = direction
-    this.offset = new THREE.Vector3(0, .1, -.3)//this.size / 2 - .5, this.size / 2 - .5, 0)
+    this.offset = new THREE.Vector3(0, .1, -.2)
+    this.level = 0
   }
 
   clone() {
@@ -304,33 +312,52 @@ class Stairs extends Placeable {
   }
 
   click(ev) {
-    ship.level++
+    if (ship.level === this.level) {
+      ship.level += this.direction
+    } else if (ship.level > this.level) {
+      ship.level--
+    } else if (ship.level < this.level) {
+      ship.level++
+    }
     ship_draw()
   }
 
   verify(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
+    vec.z = ship.level
     if (!ship.is_inside(vec.z, vec.x, vec.y)) return null
     if (!ship.is_empty(vec.z, vec.x, vec.y)) return null
+    if (ship.is_inside(vec.z + this.direction, vec.x, vec.y)) return null
+    if (!ship.is_empty(vec.z + this.direction, vec.x, vec.y)) return null
 
     vec.add(this.offset)
+    if (this.direction < 0) vec.z--
     return vec
   }
 
   place(ship, vec) {
     vec = vec.clone().sub(this.offset)
+    if (this.direction < 0) vec.z++
 
+    let deck = new Deck(1)
+    deck.place(ship, new THREE.Vector3(vec.x, vec.y, vec.z + this.direction))
+
+    ship.get_voxel(vec.z + (this.direction < 0 ? 0 : 1), vec.x, vec.y).deck.floor = false
+
+    this.level = vec.z
     ship.get_voxel(vec.z, vec.x, vec.y).contains = this
-    ship.get_voxel(vec.z, vec.x, vec.y).drawables.add(this)
+    ship.get_voxel(vec.z + this.direction, vec.x, vec.y).contains = this
+    ship.get_voxel(vec.z + (this.direction < 0 ? -1 : 0), vec.x, vec.y).drawables.add(this)
 
-    new Floor(1).place(ship, new THREE.Vector3(vec.x, vec.y, vec.z + 1))
+    ship.level += this.direction
+    document.getElementsByClassName('icon-block-1')[0].click()
   }
 
   draw(id = 0, vec = null) {
     let stairs = models.stairs.scene.clone()
 
     stairs.scale.x = .4
-    stairs.scale.y = .9
+    stairs.scale.y = 1.2
     stairs.scale.z = .4
     stairs.rotation.x = Math.PI / 2
 
@@ -565,17 +592,17 @@ scene.add(light);
 
 let ship = new Ship()
 window._ship = ship
-new Floor(1).place(ship, new THREE.Vector3(0, 0, 0))
-new Floor(1).place(ship, new THREE.Vector3(1, 0, 0))
-new Floor(1).place(ship, new THREE.Vector3(2, 0, 0))
-new Floor(1).place(ship, new THREE.Vector3(3, 0, 0))
-/*new Floor(1).place(ship, new THREE.Vector3(0, 1, 0))
-new Floor(1).place(ship, new THREE.Vector3(1, 1, 0))
-new Floor(1).place(ship, new THREE.Vector3(1, 2, 0))
-new Floor(1).place(ship, new THREE.Vector3(0, 2, 0))
-new Floor(1).place(ship, new THREE.Vector3(2, 0, 0))
-new Floor(1).place(ship, new THREE.Vector3(3, 0, 0))
-new Floor(1).place(ship, new THREE.Vector3(-1, 0, 0))
+new Deck(1).place(ship, new THREE.Vector3(0, 0, 0))
+new Deck(1).place(ship, new THREE.Vector3(1, 0, 0))
+new Deck(1).place(ship, new THREE.Vector3(2, 0, 0))
+new Deck(1).place(ship, new THREE.Vector3(3, 0, 0))
+/*new Deck(1).place(ship, new THREE.Vector3(0, 1, 0))
+new Deck(1).place(ship, new THREE.Vector3(1, 1, 0))
+new Deck(1).place(ship, new THREE.Vector3(1, 2, 0))
+new Deck(1).place(ship, new THREE.Vector3(0, 2, 0))
+new Deck(1).place(ship, new THREE.Vector3(2, 0, 0))
+new Deck(1).place(ship, new THREE.Vector3(3, 0, 0))
+new Deck(1).place(ship, new THREE.Vector3(-1, 0, 0))
 //new Tank().place(ship, new THREE.Vector3(1, 0, 0))
 //new Tank().place(ship, new THREE.Vector3(1, 1, 0))
 //new Tank().place(ship, new THREE.Vector3(0, 1, 0))
@@ -619,6 +646,7 @@ animate()
 function event_world_position(ev) {
   let pos = new THREE.Vector3()
   let vec = new THREE.Vector3()
+  let zoffset = ship.level
 
   vec.set(
     (ev.clientX / window.innerWidth) * 2 - 1,
@@ -629,10 +657,9 @@ function event_world_position(ev) {
 
   vec.sub(camera.position).normalize()
 
-  let distance = -camera.position.z / vec.z //- .5
+  let distance = (zoffset - camera.position.z) / vec.z
 
   pos.copy(camera.position).add(vec.multiplyScalar(distance))
-  //pos.z -= .5
 
   return pos
 }
@@ -712,9 +739,9 @@ function select_element() {
 
 let controls_fn = {
   'select': select_element,
-  'block-1': select_class(Floor, 1),
-  'block-2': select_class(Floor, 2),
-  'block-3': select_class(Floor, 3),
+  'block-1': select_class(Deck, 1),
+  'block-2': select_class(Deck, 2),
+  'block-3': select_class(Deck, 3),
   'engine': select_class(Engine),
   'tank': select_class(Tank),
   'level-up': select_class(Stairs, 1),
