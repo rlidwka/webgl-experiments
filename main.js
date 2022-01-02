@@ -17,6 +17,10 @@ const fuel_types = {
 let active_popovers = new Set()
 let models = {}
 
+function Vec3(x, y, z) {
+  return new THREE.Vector3(x, y, z)
+}
+
 await Promise.all([ 'engine', 'tank', 'stairs' ].map(file => {
   return new Promise(resolve => {
     new GLTFLoader()
@@ -117,7 +121,7 @@ class Ship {
   }
 
   each(fn) {
-    let vec = new THREE.Vector3()
+    let vec = Vec3()
 
     for (let z of Object.keys(this._voxels)) {
       if (z > this.level) continue
@@ -135,19 +139,69 @@ class Ship {
   }
 
   armor(vox, vec, dx, dy, dz) {
-    if (vec.z + dz > ship.level) return
+ //   if (vec.z + dz > ship.level) return
     if (this.maybe_voxel(vec.z + dz, vec.x + dx, vec.y + dy)) return
 
     let points = []
-    points.push(new THREE.Vector3(-1, -1, 1))
-    points.push(new THREE.Vector3(1, -1, 1))
-    points.push(new THREE.Vector3(-1, 1, 1))
-    points.push(new THREE.Vector3(1, 1, 1))
 
-    points.push(new THREE.Vector3(-3, -3, 0))
-    points.push(new THREE.Vector3(3, -3, 0))
-    points.push(new THREE.Vector3(-3, 3, 0))
-    points.push(new THREE.Vector3(3, 3, 0))
+    points.push(Vec3(-1, -1, 1))
+    points.push(Vec3(1, -1, 1))
+    points.push(Vec3(-1, 1, 1))
+    points.push(Vec3(1, 1, 1))
+
+    if (dz < 0) {
+      let xn = false, yn = false, xp = false, yp = false
+      if (!this.maybe_voxel(vec.z - 1, vec.x, vec.y - 1) &&
+           this.maybe_voxel(vec.z, vec.x, vec.y - 1)?.deck) {
+        points.push(Vec3(-1, -3, 1))
+        points.push(Vec3(1, -3, 1))
+        yn = true
+      }
+      if (!this.maybe_voxel(vec.z - 1, vec.x, vec.y + 1) &&
+           this.maybe_voxel(vec.z, vec.x, vec.y + 1)?.deck) {
+        points.push(Vec3(-1, 3, 1))
+        points.push(Vec3(1, 3, 1))
+        yp = true
+      }
+      if (!this.maybe_voxel(vec.z - 1, vec.x - 1, vec.y) &&
+           this.maybe_voxel(vec.z, vec.x - 1, vec.y)?.deck) {
+        points.push(Vec3(3, 1, 1))
+        points.push(Vec3(3, -1, 1))
+        xn = true
+      }
+      if (!this.maybe_voxel(vec.z - 1, vec.x + 1, vec.y) &&
+           this.maybe_voxel(vec.z, vec.x + 1, vec.y)?.deck) {
+        points.push(Vec3(-3, 1, 1))
+        points.push(Vec3(-3, -1, 1))
+        xp = true
+      }
+
+      if (xn && yn &&
+          !this.maybe_voxel(vec.z - 1, vec.x - 1, vec.y - 1) &&
+           this.maybe_voxel(vec.z, vec.x - 1, vec.y - 1)?.deck) {
+        points.push(Vec3(3, -3, 1))
+      }
+      if (xn && yp &&
+          !this.maybe_voxel(vec.z - 1, vec.x - 1, vec.y + 1) &&
+           this.maybe_voxel(vec.z, vec.x - 1, vec.y + 1)?.deck) {
+        points.push(Vec3(3, 3, 1))
+      }
+      if (xp && yn &&
+          !this.maybe_voxel(vec.z - 1, vec.x + 1, vec.y - 1) &&
+           this.maybe_voxel(vec.z, vec.x + 1, vec.y - 1)?.deck) {
+        points.push(Vec3(-3, -3, 1))
+      }
+      if (xp && yp &&
+          !this.maybe_voxel(vec.z - 1, vec.x + 1, vec.y + 1) &&
+           this.maybe_voxel(vec.z, vec.x + 1, vec.y + 1)?.deck) {
+        points.push(Vec3(-3, 3, 1))
+      }
+    }
+
+    points.push(Vec3(-3, -3, 0))
+    points.push(Vec3(3, -3, 0))
+    points.push(Vec3(-3, 3, 0))
+    points.push(Vec3(3, 3, 0))
 
     let geometry = new ConvexGeometry(points)
 
@@ -177,7 +231,7 @@ class Ship {
     mesh.position.y = vec.y + dy*t
     mesh.position.z = vec.z + dz*t
 
-    mesh.rotation.y = Math.PI/2 * Math.sign(dx) + Math.PI * Math.sign(dz)
+    mesh.rotation.y = Math.PI/2 * Math.sign(dx) + (dz < 0 ? -Math.PI : 0)
     mesh.rotation.x = -Math.PI/2 * Math.sign(dy)
     mesh.rotation.z = 0
 
@@ -244,7 +298,7 @@ class Deck extends Placeable {
     super()
     this.size = size
     this.floor = true
-    this.offset = new THREE.Vector3(this.size / 2 - .5, this.size / 2 - .5, 0)
+    this.offset = Vec3(this.size / 2 - .5, this.size / 2 - .5, 0)
   }
 
   clone() {
@@ -388,7 +442,7 @@ class Stairs extends Placeable {
   constructor(direction) {
     super()
     this.direction = direction
-    this.offset = new THREE.Vector3(0, .1, -.2)
+    this.offset = Vec3(0, .1, -.2)
     this.level = 0
   }
 
@@ -425,7 +479,7 @@ class Stairs extends Placeable {
     if (this.direction < 0) vec.z++
 
     let deck = new Deck(1)
-    deck.place(ship, new THREE.Vector3(vec.x, vec.y, vec.z + this.direction))
+    deck.place(ship, Vec3(vec.x, vec.y, vec.z + this.direction))
 
     ship.get_voxel(vec.z + (this.direction < 0 ? 0 : 1), vec.x, vec.y).deck.floor = false
 
@@ -467,7 +521,7 @@ class Stairs extends Placeable {
 class Engine extends Placeable {
   constructor() {
     super()
-    this.offset = new THREE.Vector3(0, 1 - .22, 0)
+    this.offset = Vec3(0, 1 - .22, 0)
   }
 
   verify(ship, vec) {
@@ -520,7 +574,7 @@ class Engine extends Placeable {
 class Tank extends Placeable {
   constructor() {
     super()
-    this.offset = new THREE.Vector3(0, 0, 0)
+    this.offset = Vec3(0, 0, 0)
     this.deferred = null
     this.liquid = null
   }
@@ -682,19 +736,19 @@ scene.add(light);
 
 let ship = new Ship()
 window._ship = ship
-new Deck(1).place(ship, new THREE.Vector3(0, 0, 0))
-new Deck(1).place(ship, new THREE.Vector3(1, 0, 0))
-new Deck(1).place(ship, new THREE.Vector3(0, 1, 0))
-new Deck(1).place(ship, new THREE.Vector3(1, 1, 0))
-new Deck(1).place(ship, new THREE.Vector3(1, 2, 0))
-new Deck(1).place(ship, new THREE.Vector3(0, 2, 0))
-new Deck(1).place(ship, new THREE.Vector3(2, 0, 0))
-new Deck(1).place(ship, new THREE.Vector3(3, 0, 0))
-new Deck(1).place(ship, new THREE.Vector3(-1, 0, 0))
-/*//new Tank().place(ship, new THREE.Vector3(1, 0, 0))
-//new Tank().place(ship, new THREE.Vector3(1, 1, 0))
-//new Tank().place(ship, new THREE.Vector3(0, 1, 0))
-//new Tank().place(ship, new THREE.Vector3(1, 2, 0))
+new Deck(1).place(ship, Vec3(0, 0, 0))
+new Deck(1).place(ship, Vec3(1, 0, 0))
+new Deck(1).place(ship, Vec3(0, 1, 0))
+new Deck(1).place(ship, Vec3(1, 1, 0))
+new Deck(1).place(ship, Vec3(1, 2, 0))
+new Deck(1).place(ship, Vec3(0, 2, 0))
+new Deck(1).place(ship, Vec3(2, 0, 0))
+new Deck(1).place(ship, Vec3(3, 0, 0))
+new Deck(1).place(ship, Vec3(-1, 0, 0))
+/*//new Tank().place(ship, Vec3(1, 0, 0))
+//new Tank().place(ship, Vec3(1, 1, 0))
+//new Tank().place(ship, Vec3(0, 1, 0))
+//new Tank().place(ship, Vec3(1, 2, 0))
 */
 
 function ship_draw() {
@@ -732,8 +786,8 @@ animate()
 
 
 function event_world_position(ev) {
-  let pos = new THREE.Vector3()
-  let vec = new THREE.Vector3()
+  let pos = Vec3()
+  let vec = Vec3()
   let zoffset = ship.level
 
   vec.set(
