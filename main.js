@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from './node_modules/three/examples/jsm/loaders/GLTFLoader.js'
+import { ConvexGeometry } from './node_modules/three/examples/jsm/geometries/ConvexGeometry.js'
 import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js';
 import './node_modules/knockout/build/output/knockout-latest.js'
 
@@ -133,8 +134,84 @@ class Ship {
     }
   }
 
+  armor(vox, vec, dx, dy, dz) {
+  if (!dx&&!dy) return
+
+    if (vec.z + dz > ship.level) return
+    if (this.maybe_voxel(vec.z + dz, vec.x + dx, vec.y + dy)) return
+
+    let points = []
+    points.push(new THREE.Vector3(-1, -1, 1))
+    points.push(new THREE.Vector3(1, -1, 1))
+    points.push(new THREE.Vector3(-1, 1, 1))
+    points.push(new THREE.Vector3(1, 1, 1))
+
+    points.push(new THREE.Vector3(-3, -3, 0))
+    points.push(new THREE.Vector3(3, -3, 0))
+    points.push(new THREE.Vector3(-3, 3, 0))
+    points.push(new THREE.Vector3(3, 3, 0))
+
+    let geometry = new ConvexGeometry(points)
+    let material = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    material.map = texture_gl
+    material.opacity = 1
+    material.transparent = true
+    let mesh = new THREE.Mesh(geometry, material)
+
+    let t
+
+    t = 1/6
+    mesh.scale.x = t
+    mesh.scale.y = t
+    mesh.scale.z = t
+
+    t = .5
+    mesh.position.x = vec.x + dx*t
+    mesh.position.y = vec.y + dy*t
+    mesh.position.z = vec.z + dz*t
+
+    mesh.rotation.y = Math.PI/2 * Math.sign(dx)
+    mesh.rotation.x = -Math.PI/2 * Math.sign(dy)
+    mesh.rotation.z = Math.PI/2 * Math.sign(dz)
+
+    return mesh
+
+/*    let geometry = new THREE.PlaneGeometry(1, 1)
+    let plane = new THREE.Mesh(geometry, material)
+
+    plane.scale.x = .3
+    plane.scale.y = .3
+    plane.scale.z = .3
+    plane.position.x = vec.x - dx/3
+    plane.position.y = vec.y
+    plane.position.z = vec.z
+
+    if (dx) plane.rotation.y = Math.PI / 2
+    if (dy) plane.rotation.x = Math.PI / 2
+    if (dz) plane.rotation.z = Math.PI / 2
+
+    return plane*/
+  }
+
   draw() {
     let group = new THREE.Group()
+
+    this.each((vox, vec) => {
+      let mesh
+      mesh = this.armor(vox, vec, 0, 0, 1)
+      if (mesh) group.add(mesh)
+      mesh = this.armor(vox, vec, 0, 0, -1)
+      if (mesh) group.add(mesh)
+      mesh = this.armor(vox, vec, 0, 1, 0)
+      if (mesh) group.add(mesh)
+      mesh = this.armor(vox, vec, 0, -1, 0)
+      if (mesh) group.add(mesh)
+      mesh = this.armor(vox, vec, 1, 0, 0)
+      if (mesh) group.add(mesh)
+      mesh = this.armor(vox, vec, -1, 0, 0)
+      if (mesh) group.add(mesh)
+    })
+
     let draw_id = Math.random()
 
     this.each((vox, vec) => {
@@ -147,6 +224,7 @@ class Ship {
     return group
   }
 }
+
 
 class Placeable {
   clone() {
@@ -583,6 +661,11 @@ texture_beam.wrapS = THREE.RepeatWrapping
 texture_beam.wrapT = THREE.RepeatWrapping
 texture_beam.repeat.set(1, 1)
 
+const texture_gl = new THREE.TextureLoader().load('/textures/uv_grid_opengl.jpg')
+texture_beam.wrapS = THREE.RepeatWrapping
+texture_beam.wrapT = THREE.RepeatWrapping
+texture_beam.repeat.set(1, 1)
+
 
 let scene = new THREE.Scene()
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
@@ -594,16 +677,14 @@ let ship = new Ship()
 window._ship = ship
 new Deck(1).place(ship, new THREE.Vector3(0, 0, 0))
 new Deck(1).place(ship, new THREE.Vector3(1, 0, 0))
-new Deck(1).place(ship, new THREE.Vector3(2, 0, 0))
-new Deck(1).place(ship, new THREE.Vector3(3, 0, 0))
-/*new Deck(1).place(ship, new THREE.Vector3(0, 1, 0))
+new Deck(1).place(ship, new THREE.Vector3(0, 1, 0))
 new Deck(1).place(ship, new THREE.Vector3(1, 1, 0))
 new Deck(1).place(ship, new THREE.Vector3(1, 2, 0))
 new Deck(1).place(ship, new THREE.Vector3(0, 2, 0))
 new Deck(1).place(ship, new THREE.Vector3(2, 0, 0))
 new Deck(1).place(ship, new THREE.Vector3(3, 0, 0))
 new Deck(1).place(ship, new THREE.Vector3(-1, 0, 0))
-//new Tank().place(ship, new THREE.Vector3(1, 0, 0))
+/*//new Tank().place(ship, new THREE.Vector3(1, 0, 0))
 //new Tank().place(ship, new THREE.Vector3(1, 1, 0))
 //new Tank().place(ship, new THREE.Vector3(0, 1, 0))
 //new Tank().place(ship, new THREE.Vector3(1, 2, 0))
