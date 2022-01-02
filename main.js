@@ -101,22 +101,22 @@ class Ship {
     this.level = 0
   }
 
-  get_voxel(z, x, y) {
+  get_voxel(x, y, z) {
     this._voxels[z] ??= {}
     this._voxels[z][x] ??= {}
     this._voxels[z][x][y] ??= { drawables: new Set() }
     return this._voxels[z][x][y]
   }
 
-  maybe_voxel(z, x, y) {
+  maybe_voxel(x, y, z) {
     return this._voxels[z]?.[x]?.[y]
   }
 
-  is_inside(z, x, y) {
+  is_inside(x, y, z) {
     return !!this._voxels[z]?.[x]?.[y]?.deck
   }
 
-  is_empty(z, x, y) {
+  is_empty(x, y, z) {
     return !this._voxels[z]?.[x]?.[y]?.contains
   }
 
@@ -139,9 +139,11 @@ class Ship {
   }
 
   armor(vox, vec, dx, dy, dz) {
- //   if (vec.z + dz > ship.level) return
-    if (this.maybe_voxel(vec.z + dz, vec.x + dx, vec.y + dy)) return
+    if (vec.z + dz > ship.level) return
+    if (this.maybe_voxel(vec.x + dx, vec.y + dy, vec.z + dz)) return
 
+    let roty = Math.PI/2 * Math.sign(dx) + (dz < 0 ? -Math.PI : 0)
+    let rotx = -Math.PI/2 * Math.sign(dy)
     let points = []
 
     points.push(Vec3(-1, -1, 1))
@@ -149,54 +151,55 @@ class Ship {
     points.push(Vec3(-1, 1, 1))
     points.push(Vec3(1, 1, 1))
 
-    if (dz < 0) {
+    let vv = Vec3(dx, dy, dz)
+    console.log(1,vv)
+    vv.applyAxisAngle(Vec3(1, 0, 0), rotx)
+    vv.applyAxisAngle(Vec3(0, 1, 0), roty)
+    vv.round()
+
+    let check = (dx, dy) => {
+      let vt = vec.clone().add(Vec3(dx, dy, 0).applyAxisAngle(Vec3(1, 0, 0), rotx).applyAxisAngle(Vec3(0, 1, 0), roty).round())
+      if (!this.maybe_voxel(vt.x, vt.y, vt.z)?.deck) return false
+
+      vt.sub(vv)
+      if (this.maybe_voxel(vt.x, vt.y, vt.z)) return false
+      return true
+    }
+
       let xn = false, yn = false, xp = false, yp = false
-      if (!this.maybe_voxel(vec.z - 1, vec.x, vec.y - 1) &&
-           this.maybe_voxel(vec.z, vec.x, vec.y - 1)?.deck) {
+      if (check(0, -1)) {
         points.push(Vec3(-1, -3, 1))
         points.push(Vec3(1, -3, 1))
         yn = true
       }
-      if (!this.maybe_voxel(vec.z - 1, vec.x, vec.y + 1) &&
-           this.maybe_voxel(vec.z, vec.x, vec.y + 1)?.deck) {
+      if (check(0, 1)) {
         points.push(Vec3(-1, 3, 1))
         points.push(Vec3(1, 3, 1))
         yp = true
       }
-      if (!this.maybe_voxel(vec.z - 1, vec.x - 1, vec.y) &&
-           this.maybe_voxel(vec.z, vec.x - 1, vec.y)?.deck) {
-        points.push(Vec3(3, 1, 1))
-        points.push(Vec3(3, -1, 1))
-        xn = true
-      }
-      if (!this.maybe_voxel(vec.z - 1, vec.x + 1, vec.y) &&
-           this.maybe_voxel(vec.z, vec.x + 1, vec.y)?.deck) {
+      if (check(-1, 0)) {
         points.push(Vec3(-3, 1, 1))
         points.push(Vec3(-3, -1, 1))
+        xn = true
+      }
+      if (check(1, 0)) {
+        points.push(Vec3(3, 1, 1))
+        points.push(Vec3(3, -1, 1))
         xp = true
       }
 
-      if (xn && yn &&
-          !this.maybe_voxel(vec.z - 1, vec.x - 1, vec.y - 1) &&
-           this.maybe_voxel(vec.z, vec.x - 1, vec.y - 1)?.deck) {
-        points.push(Vec3(3, -3, 1))
-      }
-      if (xn && yp &&
-          !this.maybe_voxel(vec.z - 1, vec.x - 1, vec.y + 1) &&
-           this.maybe_voxel(vec.z, vec.x - 1, vec.y + 1)?.deck) {
-        points.push(Vec3(3, 3, 1))
-      }
-      if (xp && yn &&
-          !this.maybe_voxel(vec.z - 1, vec.x + 1, vec.y - 1) &&
-           this.maybe_voxel(vec.z, vec.x + 1, vec.y - 1)?.deck) {
+      if (xn && yn && check(-1, -1)) {
         points.push(Vec3(-3, -3, 1))
       }
-      if (xp && yp &&
-          !this.maybe_voxel(vec.z - 1, vec.x + 1, vec.y + 1) &&
-           this.maybe_voxel(vec.z, vec.x + 1, vec.y + 1)?.deck) {
+      if (xn && yp && check(-1, 1)) {
         points.push(Vec3(-3, 3, 1))
       }
-    }
+      if (xp && yn && check(1, -1)) {
+        points.push(Vec3(3, -3, 1))
+      }
+      if (xp && yp && check(1, 1)) {
+        points.push(Vec3(3, 3, 1))
+      }
 
     points.push(Vec3(-3, -3, 0))
     points.push(Vec3(3, -3, 0))
@@ -216,7 +219,7 @@ class Ship {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
 
     let material = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
-    material.map = texture_gl
+    material.map = texture_hull
 
     let mesh = new THREE.Mesh(geometry, material)
     let t
@@ -231,8 +234,8 @@ class Ship {
     mesh.position.y = vec.y + dy*t
     mesh.position.z = vec.z + dz*t
 
-    mesh.rotation.y = Math.PI/2 * Math.sign(dx) + (dz < 0 ? -Math.PI : 0)
-    mesh.rotation.x = -Math.PI/2 * Math.sign(dy)
+    mesh.rotation.y = roty
+    mesh.rotation.x = rotx
     mesh.rotation.z = 0
 
     return mesh
@@ -310,17 +313,17 @@ class Deck extends Placeable {
 
     for (let dx = 0; dx < this.size; dx++) {
       for (let dy = 0; dy < this.size; dy++) {
-        if (ship.is_inside(vec.z, vec.x + dx, vec.y + dy)) return null
-        if (!ship.is_empty(vec.z, vec.x + dx, vec.y + dy)) return null
+        if (ship.is_inside(vec.x + dx, vec.y + dy, vec.z)) return null
+        if (!ship.is_empty(vec.x + dx, vec.y + dy, vec.z)) return null
       }
     }
 
     let borders = false
     LOOP: for (let d = 0; d < this.size; d++) {
-      if (ship.is_inside(vec.z, vec.x + d, vec.y - 1) ||
-          ship.is_inside(vec.z, vec.x + d, vec.y + this.size) ||
-          ship.is_inside(vec.z, vec.x - 1, vec.y + d) ||
-          ship.is_inside(vec.z, vec.x + this.size, vec.y + d)) {
+      if (ship.is_inside(vec.x + d, vec.y - 1, vec.z) ||
+          ship.is_inside(vec.x + d, vec.y + this.size, vec.z) ||
+          ship.is_inside(vec.x - 1, vec.y + d, vec.z) ||
+          ship.is_inside(vec.x + this.size, vec.y + d, vec.z)) {
         borders = true
         break LOOP
       }
@@ -337,8 +340,8 @@ class Deck extends Placeable {
 
     for (let dx = 0; dx < this.size; dx++) {
       for (let dy = 0; dy < this.size; dy++) {
-        ship.get_voxel(vec.z, vec.x + dx, vec.y + dy).deck = this
-        ship.get_voxel(vec.z, vec.x + dx, vec.y + dy).drawables.add(this)
+        ship.get_voxel(vec.x + dx, vec.y + dy, vec.z).deck = this
+        ship.get_voxel(vec.x + dx, vec.y + dy, vec.z).drawables.add(this)
       }
     }
   }
@@ -378,57 +381,59 @@ class Deck extends Placeable {
       cube.scale.z = .1
     }
 
-    if (!ship.maybe_voxel(z, x, y - 1)?.deck) {
+    let upins = false//!!ship.maybe_voxel(x, y, z + 1)?.deck
+
+    if (!ship.maybe_voxel(x, y - 1, z)?.deck) {
       let cube = new THREE.Mesh(geometry, material_beam1)
       group.add(cube)
       cube.position.x = x
       cube.position.y = y - .5 + .05
-      cube.position.z = z + .05
+      cube.position.z = z + (upins ? .05 : 0)
       cube.scale.y = .1
-      cube.scale.z = 1.1
+      cube.scale.z = (upins ? 1.1 : 1)
     }
 
-    if (!ship.maybe_voxel(z, x, y + 1)?.deck) {
+    if (!ship.maybe_voxel(x, y + 1, z)?.deck) {
       let cube = new THREE.Mesh(geometry, material_beam1)
       group.add(cube)
       cube.position.x = x
       cube.position.y = y + .5 - .05
-      cube.position.z = z + .05
+      cube.position.z = z + (upins ? .05 : 0)
       cube.scale.y = .1
-      cube.scale.z = 1.1
+      cube.scale.z = (upins ? 1.1 : 1)
     }
 
-    if (!ship.maybe_voxel(z, x - 1, y)?.deck) {
+    if (!ship.maybe_voxel(x - 1, y, z)?.deck) {
       let cube = new THREE.Mesh(geometry, material_beam2)
       group.add(cube)
       cube.position.x = x - .5 + .05
       cube.position.y = y
-      cube.position.z = z + .05
+      cube.position.z = z + (upins ? .05 : 0)
       cube.scale.x = .1
-      cube.scale.z = 1.1
-      if (ship.maybe_voxel(z, x, y - 1)?.deck) {
+      cube.scale.z = (upins ? 1.1 : 1)
+      if (ship.maybe_voxel(x, y - 1, z)?.deck) {
         cube.scale.y += .1
         cube.position.y -= .05
       }
-      if (ship.maybe_voxel(z, x, y + 1)?.deck) {
+      if (ship.maybe_voxel(x, y + 1, z)?.deck) {
         cube.scale.y += .1
         cube.position.y += .05
       }
     }
 
-    if (!ship.maybe_voxel(z, x + 1, y)?.deck) {
+    if (!ship.maybe_voxel(x + 1, y, z)?.deck) {
       let cube = new THREE.Mesh(geometry, material_beam2)
       group.add(cube)
       cube.position.x = x + .5 - .05
       cube.position.y = y
-      cube.position.z = z + .05
+      cube.position.z = z + (upins ? .05 : 0)
       cube.scale.x = .1
-      cube.scale.z = 1.1
-      if (ship.maybe_voxel(z, x, y - 1)?.deck) {
+      cube.scale.z = (upins ? 1.1 : 1)
+      if (ship.maybe_voxel(x, y - 1, z)?.deck) {
         cube.scale.y += .1
         cube.position.y -= .05
       }
-      if (ship.maybe_voxel(z, x, y + 1)?.deck) {
+      if (ship.maybe_voxel(x, y + 1, z)?.deck) {
         cube.scale.y += .1
         cube.position.y += .05
       }
@@ -464,10 +469,10 @@ class Stairs extends Placeable {
   verify(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
     vec.z = ship.level
-    if (!ship.is_inside(vec.z, vec.x, vec.y)) return null
-    if (!ship.is_empty(vec.z, vec.x, vec.y)) return null
-    if (ship.is_inside(vec.z + this.direction, vec.x, vec.y)) return null
-    if (!ship.is_empty(vec.z + this.direction, vec.x, vec.y)) return null
+    if (!ship.is_inside(vec.x, vec.y, vec.z)) return null
+    if (!ship.is_empty(vec.x, vec.y, vec.z)) return null
+    if (ship.is_inside(vec.x, vec.y, vec.z + this.direction)) return null
+    if (!ship.is_empty(vec.x, vec.y, vec.z + this.direction)) return null
 
     vec.add(this.offset)
     if (this.direction < 0) vec.z--
@@ -481,12 +486,12 @@ class Stairs extends Placeable {
     let deck = new Deck(1)
     deck.place(ship, Vec3(vec.x, vec.y, vec.z + this.direction))
 
-    ship.get_voxel(vec.z + (this.direction < 0 ? 0 : 1), vec.x, vec.y).deck.floor = false
+    ship.get_voxel(vec.x, vec.y, vec.z + (this.direction < 0 ? 0 : 1)).deck.floor = false
 
     this.level = vec.z
-    ship.get_voxel(vec.z, vec.x, vec.y).contains = this
-    ship.get_voxel(vec.z + this.direction, vec.x, vec.y).contains = this
-    ship.get_voxel(vec.z + (this.direction < 0 ? -1 : 0), vec.x, vec.y).drawables.add(this)
+    ship.get_voxel(vec.x, vec.y, vec.z).contains = this
+    ship.get_voxel(vec.x, vec.y, vec.z + this.direction).contains = this
+    ship.get_voxel(vec.x, vec.y, vec.z + (this.direction < 0 ? -1 : 0)).drawables.add(this)
 
     ship.level += this.direction
     document.getElementsByClassName('icon-block-1')[0].click()
@@ -527,11 +532,11 @@ class Engine extends Placeable {
   verify(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
 
-    if (!ship.is_inside(vec.z, vec.x, vec.y + 1)) return null
-    if (ship.is_inside(vec.z, vec.x, vec.y)) return null
+    if (!ship.is_inside(vec.x, vec.y + 1, vec.z)) return null
+    if (ship.is_inside(vec.x, vec.y, vec.z)) return null
 
-    if (!ship.is_empty(vec.z, vec.x, vec.y + 1)) return null
-    if (!ship.is_empty(vec.z, vec.x, vec.y)) return null
+    if (!ship.is_empty(vec.x, vec.y + 1, vec.z)) return null
+    if (!ship.is_empty(vec.x, vec.y, vec.z)) return null
 
     vec.add(this.offset)
     return vec
@@ -540,9 +545,9 @@ class Engine extends Placeable {
   place(ship, vec) {
     vec = vec.clone().sub(this.offset)
 
-    ship.get_voxel(vec.z, vec.x, vec.y).contains = this
-    ship.get_voxel(vec.z, vec.x, vec.y).drawables.add(this)
-    ship.get_voxel(vec.z, vec.x, vec.y + 1).contains = this
+    ship.get_voxel(vec.x, vec.y, vec.z).contains = this
+    ship.get_voxel(vec.x, vec.y, vec.z).drawables.add(this)
+    ship.get_voxel(vec.x, vec.y + 1, vec.z).contains = this
   }
 
   draw(id = 0, vec = null) {
@@ -581,11 +586,11 @@ class Tank extends Placeable {
 
   verify(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
-    if (!ship.is_inside(vec.z, vec.x, vec.y)) return null
-    if (!ship.is_empty(vec.z, vec.x, vec.y)) return null
+    if (!ship.is_inside(vec.x, vec.y, vec.z)) return null
+    if (!ship.is_empty(vec.x, vec.y, vec.z)) return null
 
-    let t1 = ship.maybe_voxel(vec.z, vec.x, vec.y - 1)
-    let t2 = ship.maybe_voxel(vec.z, vec.x, vec.y + 1)
+    let t1 = ship.maybe_voxel(vec.x, vec.y - 1, vec.z)
+    let t2 = ship.maybe_voxel(vec.x, vec.y + 1, vec.z)
     if (t1?.contains instanceof this.constructor && t2?.contains instanceof this.constructor) {
       if (t1.contains.liquid && t1.contains.liquid.type !== t2.contains.liquid.type) {
         return null
@@ -610,8 +615,8 @@ class Tank extends Placeable {
   place(ship, vec) {
     vec = vec.clone().sub(this.offset)
 
-    ship.get_voxel(vec.z, vec.x, vec.y).contains = this
-    ship.get_voxel(vec.z, vec.x, vec.y).drawables.add(this)
+    ship.get_voxel(vec.x, vec.y, vec.z).contains = this
+    ship.get_voxel(vec.x, vec.y, vec.z).drawables.add(this)
 
     ship.each((vox, vec) => {
       if (vox.contains instanceof this.constructor) vox.contains.unlink()
@@ -621,14 +626,14 @@ class Tank extends Placeable {
       if (vox.contains instanceof this.constructor) vox.contains.link(ship, vec)
     })
 
-    let next = ship.maybe_voxel(vec.z, vec.x, vec.y + 1)
+    let next = ship.maybe_voxel(vec.x, vec.y + 1, vec.z)
     if (next?.contains instanceof this.constructor) {
       this.liquid = next.contains.liquid
     }
   }
 
   link(ship, vec) {
-    let v = ship.maybe_voxel(vec.z, vec.x, vec.y - 1)
+    let v = ship.maybe_voxel(vec.x, vec.y - 1, vec.z)
     if (v?.contains instanceof this.constructor) {
       this.deferred = v.contains.deferred || v.contains
     }
@@ -646,7 +651,7 @@ class Tank extends Placeable {
 
     if (vec) {
       for (let dy = 1; ; dy++) {
-        let v = ship.maybe_voxel(vec.z, vec.x, vec.y + dy)
+        let v = ship.maybe_voxel(vec.x, vec.y + dy, vec.z)
         if (!(v?.contains instanceof this.constructor)) break
         height++
       }
@@ -723,6 +728,11 @@ texture_beam.wrapT = THREE.RepeatWrapping
 texture_beam.repeat.set(1, 1)
 
 const texture_gl = new THREE.TextureLoader().load('/textures/uv_grid_opengl.jpg')
+texture_beam.wrapS = THREE.RepeatWrapping
+texture_beam.wrapT = THREE.RepeatWrapping
+texture_beam.repeat.set(1, 1)
+
+const texture_hull = new THREE.TextureLoader().load('/textures/hull.jpg')
 texture_beam.wrapS = THREE.RepeatWrapping
 texture_beam.wrapT = THREE.RepeatWrapping
 texture_beam.repeat.set(1, 1)
@@ -814,7 +824,7 @@ document.addEventListener('click', ev => {
 
   if (!selected_placeable) {
     pos.round()
-    let v = ship.maybe_voxel(pos.z, pos.x, pos.y)
+    let v = ship.maybe_voxel(pos.x, pos.y, pos.z)
     v?.contains?.click?.(ev)
     return
   }
@@ -835,7 +845,7 @@ document.addEventListener('mousemove', ev => {
 
   if (!selected_placeable) {
     pos.round()
-    let v = ship.maybe_voxel(pos.z, pos.x, pos.y)
+    let v = ship.maybe_voxel(pos.x, pos.y, pos.z)
     renderer.domElement.style.cursor = v?.contains?.click ? 'pointer' : 'default'
     return
   }
