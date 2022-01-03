@@ -139,12 +139,31 @@ class Ship {
   }
 
   armor(vox, vec, dx, dy, dz) {
-  if (!dz)return
-  //  if (vec.z + dz > ship.level) return
+    if (vec.z + dz > ship.level) return
     if (this.maybe_voxel(vec.x + dx, vec.y + dy, vec.z + dz)) return
 
-    let roty = Math.PI/2 * Math.sign(dx) + (dz < 0 ? -Math.PI : 0)
-    let rotx = -Math.PI/2 * Math.sign(dy)
+    let matrix = new THREE.Matrix3()
+
+    if (dx) {
+      matrix.set(
+        0, 0, dx,
+        1, 0, 0,
+        0, 1, 0
+      )
+    } else if (dy) {
+      matrix.set(
+        0, 1, 0,
+        0, 0, dy,
+        1, 0, 0
+      )
+    } else if (dz) {
+      matrix.set(
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, dz
+      )
+    }
+
     let points = []
 
     points.push(Vec3(-1, -1, 1))
@@ -152,17 +171,13 @@ class Ship {
     points.push(Vec3(-1, 1, 1))
     points.push(Vec3(1, 1, 1))
 
-    let vv = Vec3(dx, dy, dz)
-    console.log(1,vv)
-    vv.applyAxisAngle(Vec3(1, 0, 0), rotx)
-    vv.applyAxisAngle(Vec3(0, 1, 0), roty)
-    vv.round()
+    let vdiff = Vec3(dx, dy, dz)
 
     let check = (dx, dy) => {
-      let vt = vec.clone().add(Vec3(dx, dy, 0).applyAxisAngle(Vec3(1, 0, 0), rotx).applyAxisAngle(Vec3(0, 1, 0), roty).round())
+      let vt = Vec3(dx, dy, 0).applyMatrix3(matrix).add(vec)
       if (!this.maybe_voxel(vt.x, vt.y, vt.z)?.deck) return false
 
-      vt.sub(vv)
+      vt.add(vdiff)
       if (this.maybe_voxel(vt.x, vt.y, vt.z)) return false
       return true
     }
@@ -225,37 +240,16 @@ class Ship {
     let mesh = new THREE.Mesh(geometry, material)
     let t
 
-    t = 1/6
-    mesh.scale.x = t
-    mesh.scale.y = t
-    mesh.scale.z = t
+    matrix = new THREE.Matrix4().setFromMatrix3(matrix)
+    matrix.multiply(new THREE.Matrix4().makeScale(1/6, 1/6, 1/6))
+    mesh.applyMatrix4(matrix)
 
     t = .5
     mesh.position.x = vec.x + dx*t
     mesh.position.y = vec.y + dy*t
     mesh.position.z = vec.z + dz*t
 
-    mesh.rotation.y = roty
-    mesh.rotation.x = rotx
-    mesh.rotation.z = 0
-
     return mesh
-
-/*    let geometry = new THREE.PlaneGeometry(1, 1)
-    let plane = new THREE.Mesh(geometry, material)
-
-    plane.scale.x = .3
-    plane.scale.y = .3
-    plane.scale.z = .3
-    plane.position.x = vec.x - dx/3
-    plane.position.y = vec.y
-    plane.position.z = vec.z
-
-    if (dx) plane.rotation.y = Math.PI / 2
-    if (dy) plane.rotation.x = Math.PI / 2
-    if (dz) plane.rotation.z = Math.PI / 2
-
-    return plane*/
   }
 
   draw() {
@@ -309,7 +303,7 @@ class Deck extends Placeable {
     return new this.constructor(this.size)
   }
 
-  verify(ship, vec) {
+  can_place(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
 
     for (let dx = 0; dx < this.size; dx++) {
@@ -336,7 +330,7 @@ class Deck extends Placeable {
     return vec
   }
 
-  place(ship, vec) {
+  do_place(ship, vec) {
     vec = vec.clone().sub(this.offset)
 
     for (let dx = 0; dx < this.size; dx++) {
@@ -467,7 +461,7 @@ class Stairs extends Placeable {
     ship_draw()
   }
 
-  verify(ship, vec) {
+  can_place(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
     vec.z = ship.level
     if (!ship.is_inside(vec.x, vec.y, vec.z)) return null
@@ -480,12 +474,12 @@ class Stairs extends Placeable {
     return vec
   }
 
-  place(ship, vec) {
+  do_place(ship, vec) {
     vec = vec.clone().sub(this.offset)
     if (this.direction < 0) vec.z++
 
     let deck = new Deck(1)
-    deck.place(ship, Vec3(vec.x, vec.y, vec.z + this.direction))
+    deck.do_place(ship, Vec3(vec.x, vec.y, vec.z + this.direction))
 
     ship.get_voxel(vec.x, vec.y, vec.z + (this.direction < 0 ? 0 : 1)).deck.floor = false
 
@@ -530,7 +524,7 @@ class Engine extends Placeable {
     this.offset = Vec3(0, 1 - .22, 0)
   }
 
-  verify(ship, vec) {
+  can_place(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
 
     if (!ship.is_inside(vec.x, vec.y + 1, vec.z)) return null
@@ -543,7 +537,7 @@ class Engine extends Placeable {
     return vec
   }
 
-  place(ship, vec) {
+  do_place(ship, vec) {
     vec = vec.clone().sub(this.offset)
 
     ship.get_voxel(vec.x, vec.y, vec.z).contains = this
@@ -585,7 +579,7 @@ class Tank extends Placeable {
     this.liquid = null
   }
 
-  verify(ship, vec) {
+  can_place(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
     if (!ship.is_inside(vec.x, vec.y, vec.z)) return null
     if (!ship.is_empty(vec.x, vec.y, vec.z)) return null
@@ -613,7 +607,7 @@ class Tank extends Placeable {
     tank_popover.show(ev.clientX, ev.clientY)
   }
 
-  place(ship, vec) {
+  do_place(ship, vec) {
     vec = vec.clone().sub(this.offset)
 
     ship.get_voxel(vec.x, vec.y, vec.z).contains = this
@@ -751,21 +745,21 @@ window._ship = ship
 for (let x=-2;x<=0;x++)
 for (let y=-2;y<=0;y++)
 for (let z=-2;z<=0;z++)
-new Deck(1).place(ship, Vec3(x, y, z))
+new Deck(1).do_place(ship, Vec3(x, y, z))
 
-/*new Deck(1).place(ship, Vec3(0, 0, 0))
-new Deck(1).place(ship, Vec3(1, 0, 0))
-new Deck(1).place(ship, Vec3(0, 1, 0))
-new Deck(1).place(ship, Vec3(1, 1, 0))
-new Deck(1).place(ship, Vec3(1, 2, 0))
-new Deck(1).place(ship, Vec3(0, 2, 0))
-new Deck(1).place(ship, Vec3(2, 0, 0))
-new Deck(1).place(ship, Vec3(3, 0, 0))
-new Deck(1).place(ship, Vec3(-1, 0, 0))
-new Tank().place(ship, Vec3(1, 0, 0))
-//new Tank().place(ship, Vec3(1, 1, 0))
-//new Tank().place(ship, Vec3(0, 1, 0))
-//new Tank().place(ship, Vec3(1, 2, 0))
+/*new Deck(1).do_place(ship, Vec3(0, 0, 0))
+new Deck(1).do_place(ship, Vec3(1, 0, 0))
+new Deck(1).do_place(ship, Vec3(0, 1, 0))
+new Deck(1).do_place(ship, Vec3(1, 1, 0))
+new Deck(1).do_place(ship, Vec3(1, 2, 0))
+new Deck(1).do_place(ship, Vec3(0, 2, 0))
+new Deck(1).do_place(ship, Vec3(2, 0, 0))
+new Deck(1).do_place(ship, Vec3(3, 0, 0))
+new Deck(1).do_place(ship, Vec3(-1, 0, 0))
+new Tank().do_place(ship, Vec3(1, 0, 0))
+//new Tank().do_place(ship, Vec3(1, 1, 0))
+//new Tank().do_place(ship, Vec3(0, 1, 0))
+//new Tank().do_place(ship, Vec3(1, 2, 0))
 */
 
 function ship_draw() {
@@ -836,10 +830,10 @@ document.addEventListener('click', ev => {
     return
   }
 
-  let free_pos = selected_placeable.verify(ship, pos)
+  let free_pos = selected_placeable.can_place(ship, pos)
 
   if (free_pos) {
-    selected_placeable.clone().place(ship, free_pos)
+    selected_placeable.clone().do_place(ship, free_pos)
     ship_draw()
     selected_material.color.set(0xaa0000)
   }  
@@ -861,7 +855,7 @@ document.addEventListener('mousemove', ev => {
 
   selected_mesh.visible = true
 
-  let free_pos = selected_placeable.verify(ship, pos)
+  let free_pos = selected_placeable.can_place(ship, pos)
 
   if (free_pos) {
     selected_material.color.set(0x00aa00)
