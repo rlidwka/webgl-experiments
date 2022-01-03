@@ -139,7 +139,8 @@ class Ship {
   }
 
   armor(vox, vec, dx, dy, dz) {
-    if (vec.z + dz > ship.level) return
+  if (!dz)return
+  //  if (vec.z + dz > ship.level) return
     if (this.maybe_voxel(vec.x + dx, vec.y + dy, vec.z + dz)) return
 
     let roty = Math.PI/2 * Math.sign(dx) + (dz < 0 ? -Math.PI : 0)
@@ -746,7 +747,13 @@ scene.add(light);
 
 let ship = new Ship()
 window._ship = ship
-new Deck(1).place(ship, Vec3(0, 0, 0))
+
+for (let x=-2;x<=0;x++)
+for (let y=-2;y<=0;y++)
+for (let z=-2;z<=0;z++)
+new Deck(1).place(ship, Vec3(x, y, z))
+
+/*new Deck(1).place(ship, Vec3(0, 0, 0))
 new Deck(1).place(ship, Vec3(1, 0, 0))
 new Deck(1).place(ship, Vec3(0, 1, 0))
 new Deck(1).place(ship, Vec3(1, 1, 0))
@@ -755,7 +762,7 @@ new Deck(1).place(ship, Vec3(0, 2, 0))
 new Deck(1).place(ship, Vec3(2, 0, 0))
 new Deck(1).place(ship, Vec3(3, 0, 0))
 new Deck(1).place(ship, Vec3(-1, 0, 0))
-/*//new Tank().place(ship, Vec3(1, 0, 0))
+new Tank().place(ship, Vec3(1, 0, 0))
 //new Tank().place(ship, Vec3(1, 1, 0))
 //new Tank().place(ship, Vec3(0, 1, 0))
 //new Tank().place(ship, Vec3(1, 2, 0))
