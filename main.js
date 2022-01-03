@@ -182,40 +182,40 @@ class Ship {
       return true
     }
 
-      let xn = false, yn = false, xp = false, yp = false
-      if (check(0, -1)) {
-        points.push(Vec3(-1, -3, 1))
-        points.push(Vec3(1, -3, 1))
-        yn = true
-      }
-      if (check(0, 1)) {
-        points.push(Vec3(-1, 3, 1))
-        points.push(Vec3(1, 3, 1))
-        yp = true
-      }
-      if (check(-1, 0)) {
-        points.push(Vec3(-3, 1, 1))
-        points.push(Vec3(-3, -1, 1))
-        xn = true
-      }
-      if (check(1, 0)) {
-        points.push(Vec3(3, 1, 1))
-        points.push(Vec3(3, -1, 1))
-        xp = true
-      }
+    let xn = false, yn = false, xp = false, yp = false
+    if (check(0, -1)) {
+      points.push(Vec3(-1, -3, 1))
+      points.push(Vec3(1, -3, 1))
+      yn = true
+    }
+    if (check(0, 1)) {
+      points.push(Vec3(-1, 3, 1))
+      points.push(Vec3(1, 3, 1))
+      yp = true
+    }
+    if (check(-1, 0)) {
+      points.push(Vec3(-3, 1, 1))
+      points.push(Vec3(-3, -1, 1))
+      xn = true
+    }
+    if (check(1, 0)) {
+      points.push(Vec3(3, 1, 1))
+      points.push(Vec3(3, -1, 1))
+      xp = true
+    }
 
-      if (xn && yn && check(-1, -1)) {
-        points.push(Vec3(-3, -3, 1))
-      }
-      if (xn && yp && check(-1, 1)) {
-        points.push(Vec3(-3, 3, 1))
-      }
-      if (xp && yn && check(1, -1)) {
-        points.push(Vec3(3, -3, 1))
-      }
-      if (xp && yp && check(1, 1)) {
-        points.push(Vec3(3, 3, 1))
-      }
+    if (xn && yn && check(-1, -1)) {
+      points.push(Vec3(-3, -3, 1))
+    }
+    if (xn && yp && check(-1, 1)) {
+      points.push(Vec3(-3, 3, 1))
+    }
+    if (xp && yn && check(1, -1)) {
+      points.push(Vec3(3, -3, 1))
+    }
+    if (xp && yp && check(1, 1)) {
+      points.push(Vec3(3, 3, 1))
+    }
 
     points.push(Vec3(-3, -3, 0))
     points.push(Vec3(3, -3, 0))
@@ -276,7 +276,7 @@ class Ship {
 
     this.each((vox, vec) => {
       for (let drawable of vox.drawables) {
-        let mesh = drawable.draw(draw_id, vec)?.[0]
+        let mesh = drawable.draw(draw_id, vec)
         if (mesh) group.add(mesh)
       }
     })
@@ -371,7 +371,7 @@ class Deck extends Placeable {
       let mesh = new THREE.Mesh(geometry, material)
       this.mesh = mesh
 
-      return [ mesh, material ]
+      return mesh
     }
 
     let group = new THREE.Group()
@@ -459,7 +459,7 @@ class Deck extends Placeable {
     }
 
     this.mesh = group
-    return [ group ]
+    return group
   }
 }
 
@@ -541,7 +541,7 @@ class Stairs extends Placeable {
 
     this.mesh = stairs
 
-    return [ stairs, material ]
+    return stairs
   }
 }
 
@@ -596,7 +596,7 @@ class Engine extends Placeable {
 
     this.mesh = engine
 
-    return [ engine, material ]
+    return engine
   }
 }
 
@@ -733,7 +733,7 @@ class Tank extends Placeable {
 
     this.mesh = tank
 
-    return [ tank, material ]
+    return tank
   }
 }
 
@@ -904,7 +904,7 @@ function select_class(placeable_class, ...args) {
 
     selected_placeable = new placeable_class(...args)
 
-    ;[ selected_mesh ] = selected_placeable.draw()
+    selected_mesh = selected_placeable.draw()
 
     scene.add(selected_mesh)
 
