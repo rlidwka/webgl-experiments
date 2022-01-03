@@ -256,6 +256,7 @@ class Ship {
     let group = new THREE.Group()
 
     this.each((vox, vec) => {
+      if (!vox.deck) return
       let mesh
       mesh = this.armor(vox, vec, 0, 0, 1)
       if (mesh) group.add(mesh)
@@ -286,8 +287,30 @@ class Ship {
 
 
 class Placeable {
+  constructor() {
+    this.mesh = null
+    this.matmap = new WeakMap()
+  }
+
   clone() {
     return new this.constructor()
+  }
+
+  highlight(color = null) {
+    let material = new THREE.MeshBasicMaterial({ color })
+
+    material.opacity = 0.7
+    material.transparent = true
+
+    this.mesh.traverse(mesh => {
+      if (mesh.type !== 'Mesh') return
+      if (color) {
+        if (!this.matmap.has(mesh)) this.matmap.set(mesh, mesh.material)
+        mesh.material = material
+      } else {
+        if (this.matmap.has(mesh)) mesh.material = this.matmap.get(mesh)
+      }
+    })
   }
 }
 
@@ -346,6 +369,7 @@ class Deck extends Placeable {
       let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
       let material = new THREE.MeshBasicMaterial()
       let mesh = new THREE.Mesh(geometry, material)
+      this.mesh = mesh
 
       return [ mesh, material ]
     }
@@ -434,6 +458,7 @@ class Deck extends Placeable {
       }
     }
 
+    this.mesh = group
     return [ group ]
   }
 }
@@ -514,6 +539,8 @@ class Stairs extends Placeable {
       mesh.material = material
     })
 
+    this.mesh = stairs
+
     return [ stairs, material ]
   }
 }
@@ -566,6 +593,8 @@ class Engine extends Placeable {
         mesh.material = material
       })
     }
+
+    this.mesh = engine
 
     return [ engine, material ]
   }
@@ -702,6 +731,8 @@ class Tank extends Placeable {
       mesh.material = material
     })
 
+    this.mesh = tank
+
     return [ tank, material ]
   }
 }
@@ -746,6 +777,7 @@ for (let x=-2;x<=0;x++)
 for (let y=-2;y<=0;y++)
 for (let z=-2;z<=0;z++)
 new Deck(1).do_place(ship, Vec3(x, y, z))
+new Engine().do_place(ship, Vec3(-1, -2.2199999999999998, 0))
 
 /*new Deck(1).do_place(ship, Vec3(0, 0, 0))
 new Deck(1).do_place(ship, Vec3(1, 0, 0))
@@ -782,9 +814,9 @@ controls.maxDistance = 10
 controls.target.set(0, 0.5, 0)
 controls.update()
 
-let selected_material
 let selected_mesh
 let selected_placeable
+let selected_action
 
 camera.position.z = 5
 
@@ -835,7 +867,7 @@ document.addEventListener('click', ev => {
   if (free_pos) {
     selected_placeable.clone().do_place(ship, free_pos)
     ship_draw()
-    selected_material.color.set(0xaa0000)
+    selected_placeable.highlight(0xaa0000)
   }  
 })
 
@@ -858,10 +890,10 @@ document.addEventListener('mousemove', ev => {
   let free_pos = selected_placeable.can_place(ship, pos)
 
   if (free_pos) {
-    selected_material.color.set(0x00aa00)
+    selected_placeable.highlight(0x00aa00)
     selected_mesh.position.copy(free_pos)
   } else {
-    selected_material.color.set(0xaa0000)
+    selected_placeable.highlight(0xaa0000)
     selected_mesh.position.copy(pos)
   }
 })
@@ -872,26 +904,28 @@ function select_class(placeable_class, ...args) {
 
     selected_placeable = new placeable_class(...args)
 
-    ;[ selected_mesh, selected_material ] = selected_placeable.draw()
+    ;[ selected_mesh ] = selected_placeable.draw()
 
     scene.add(selected_mesh)
 
-    selected_material.opacity = 0.7
-    selected_material.transparent = true
     selected_mesh.visible = false
   }
 }
 
-function select_element() {
-  if (selected_placeable) {
-    scene.remove(selected_mesh)
-    selected_mesh = null
-    selected_placeable = null
+function select_action(action) {
+  return function () {
+    if (selected_placeable) {
+      scene.remove(selected_mesh)
+      selected_mesh = null
+      selected_placeable = null
+    }
   }
+  selected_action = action
 }
 
 let controls_fn = {
-  'select': select_element,
+  'select': select_action(null),
+  'remove': select_action('remove'),
   'block-1': select_class(Deck, 1),
   'block-2': select_class(Deck, 2),
   'block-3': select_class(Deck, 3),

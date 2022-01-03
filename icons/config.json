@@ -34,13 +34,13 @@
     },
     {
       "uid": "0cd2582b8c93719d066ee0affd02ac78",
-      "css": "sort-alt-up",
+      "css": "level-down",
       "code": 61792,
       "src": "fontawesome"
     },
     {
       "uid": "a685b79321ed1a641b6e3a9f77c74b98",
-      "css": "sort-alt-down",
+      "css": "level-up",
       "code": 61793,
       "src": "custom_icons",
       "selected": true,
@@ -146,6 +146,12 @@
       "uid": "12a80769cc7ac08e986deeafbe553054",
       "css": "mouse-pointer",
       "code": 62021,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "5211af474d3a9848f67f945e2ccaf143",
+      "css": "cancel",
+      "code": 59409,
       "src": "fontawesome"
     }
   ]
