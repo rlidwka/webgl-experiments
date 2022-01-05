@@ -112,6 +112,16 @@ class Ship {
     return this._voxels[z]?.[x]?.[y]
   }
 
+  clean_voxel(x, y, z) {
+    if (Object.keys(this._voxels[z][x][y]).length > 1) return
+    if (this._voxels[z][x][y].drawables.size) return
+    delete this._voxels[z][x][y]
+    if (Object.keys(this._voxels[z][x]).length) return
+    delete this._voxels[z][x]
+    if (Object.keys(this._voxels[z]).length) return
+    delete this._voxels[z]
+  }
+
   is_inside(x, y, z) {
     return !!this._voxels[z]?.[x]?.[y]?.deck
   }
@@ -289,6 +299,7 @@ class Ship {
 class Placeable {
   constructor() {
     this.mesh = null
+    this.position = null
     this.matmap = new WeakMap()
   }
 
@@ -566,10 +577,24 @@ class Engine extends Placeable {
 
   do_place(ship, vec) {
     vec = vec.clone().sub(this.offset)
+    this.position = vec
 
     ship.get_voxel(vec.x, vec.y, vec.z).contains = this
     ship.get_voxel(vec.x, vec.y, vec.z).drawables.add(this)
     ship.get_voxel(vec.x, vec.y + 1, vec.z).contains = this
+  }
+
+  can_remove() {
+    return true
+  }
+
+  do_remove() {
+    let vec = this.position
+    delete ship.get_voxel(vec.x, vec.y, vec.z).contains
+    ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
+    delete ship.get_voxel(vec.x, vec.y + 1, vec.z).contains
+    ship.clean_voxel(vec.x, vec.y, vec.z)
+    ship.clean_voxel(vec.x, vec.y + 1, vec.z)
   }
 
   draw(id = 0, vec = null) {
@@ -604,7 +629,8 @@ class Tank extends Placeable {
   constructor() {
     super()
     this.offset = Vec3(0, 0, 0)
-    this.deferred = null
+    this.prev = null
+    this.next = null
     this.liquid = null
   }
 
@@ -626,7 +652,7 @@ class Tank extends Placeable {
   }
 
   click(ev) {
-    if (this.deferred) return this.deferred.click(ev)
+    if (this.next) return this.next.click(ev)
 
     tank_popover.assign = value => {
       this.liquid = value
@@ -637,6 +663,7 @@ class Tank extends Placeable {
   }
 
   do_place(ship, vec) {
+    this.position = vec
     vec = vec.clone().sub(this.offset)
 
     ship.get_voxel(vec.x, vec.y, vec.z).contains = this
@@ -656,20 +683,46 @@ class Tank extends Placeable {
     }
   }
 
+  can_remove() {
+    return true
+  }
+
+  do_remove() {
+    if (this.next) return this.next.do_remove()
+    console.log(ship)
+
+    let vec = this.position
+    delete ship.get_voxel(vec.x, vec.y, vec.z).contains
+    ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
+
+    if (this.prev) {
+      this.prev.next = null
+      this.prev.do_remove()
+    }
+    this.unlink()
+  }
+
   link(ship, vec) {
     let v = ship.maybe_voxel(vec.x, vec.y - 1, vec.z)
     if (v?.contains instanceof this.constructor) {
-      this.deferred = v.contains.deferred || v.contains
+      this.next = v.contains
+      v.contains.prev = this
     }
   }
 
   unlink(ship) {
-    if (this.deferred) this.liquid = this.deferred.liquid
-    this.deferred = null
+    if (this.next) this.liquid = this.next.liquid
+    this.prev = null
+    this.next = null
+  }
+
+  highlight(color = null) {
+    if (this.next) return this.next.highlight(color)
+    super.highlight(color)
   }
 
   draw(id = 0, vec = null) {
-    if (this.deferred) return
+    if (this.next) return
 
     let height = 0
 
@@ -773,13 +826,17 @@ scene.add(light);
 let ship = new Ship()
 window._ship = ship
 
-for (let x=-2;x<=0;x++)
+/*for (let x=-2;x<=0;x++)
 for (let y=-2;y<=0;y++)
 for (let z=-2;z<=0;z++)
 new Deck(1).do_place(ship, Vec3(x, y, z))
 new Engine().do_place(ship, Vec3(-1, -2.2199999999999998, 0))
+new Tank().do_place(ship, Vec3(1, 1, 0))
+//new Tank().do_place(ship, Vec3(0, 1, 0))
+//new Tank().do_place(ship, Vec3(1, 2, 0))
+*/
 
-/*new Deck(1).do_place(ship, Vec3(0, 0, 0))
+new Deck(1).do_place(ship, Vec3(0, 0, 0))
 new Deck(1).do_place(ship, Vec3(1, 0, 0))
 new Deck(1).do_place(ship, Vec3(0, 1, 0))
 new Deck(1).do_place(ship, Vec3(1, 1, 0))
@@ -789,10 +846,10 @@ new Deck(1).do_place(ship, Vec3(2, 0, 0))
 new Deck(1).do_place(ship, Vec3(3, 0, 0))
 new Deck(1).do_place(ship, Vec3(-1, 0, 0))
 new Tank().do_place(ship, Vec3(1, 0, 0))
-//new Tank().do_place(ship, Vec3(1, 1, 0))
-//new Tank().do_place(ship, Vec3(0, 1, 0))
-//new Tank().do_place(ship, Vec3(1, 2, 0))
-*/
+new Tank().do_place(ship, Vec3(1, 1, 0))
+new Tank().do_place(ship, Vec3(0, 1, 0))
+new Tank().do_place(ship, Vec3(1, 2, 0))
+
 
 function ship_draw() {
   if (ship_group) scene.remove(ship_group)
@@ -817,6 +874,7 @@ controls.update()
 let selected_mesh
 let selected_placeable
 let selected_action
+let highlighted
 
 camera.position.z = 5
 
@@ -858,7 +916,13 @@ document.addEventListener('click', ev => {
   if (!selected_placeable) {
     pos.round()
     let v = ship.maybe_voxel(pos.x, pos.y, pos.z)
-    v?.contains?.click?.(ev)
+    if (!selected_action) {
+      v?.contains?.click?.(ev)
+    } else if (selected_action === 'remove' && v?.contains?.can_remove?.(pos)) {
+      v.contains.do_remove()
+      highlighted = null
+      ship_draw()
+    }
     return
   }
 
@@ -872,6 +936,9 @@ document.addEventListener('click', ev => {
 })
 
 document.addEventListener('mousemove', ev => {
+  highlighted?.highlight(false)
+  highlighted = null
+
   if (ev.target !== renderer.domElement) return
 
   let pos = event_world_position(ev)
@@ -879,7 +946,17 @@ document.addEventListener('mousemove', ev => {
   if (!selected_placeable) {
     pos.round()
     let v = ship.maybe_voxel(pos.x, pos.y, pos.z)
-    renderer.domElement.style.cursor = v?.contains?.click ? 'pointer' : 'default'
+    if (!selected_action && v?.contains?.click) {
+      highlighted = v.contains
+      v.contains.highlight(0xa3f0ff)
+      renderer.domElement.style.cursor = 'pointer'
+    } else if (selected_action === 'remove' && v?.contains?.can_remove(pos)) {
+      highlighted = v.contains
+      v.contains.highlight(0xaa0000)
+      renderer.domElement.style.cursor = 'pointer'
+    } else {
+      renderer.domElement.style.cursor = 'default'
+    }
     return
   }
 
@@ -919,8 +996,8 @@ function select_action(action) {
       selected_mesh = null
       selected_placeable = null
     }
+    selected_action = action
   }
-  selected_action = action
 }
 
 let controls_fn = {
@@ -948,7 +1025,7 @@ document.getElementsByClassName('controls')[0].addEventListener('click', ev => {
   ev.target.classList.add('active')
 })
 
-//document.getElementsByClassName('icon-sort-alt-down')[0].click()
+document.getElementsByClassName('icon-cancel')[0].click()
 
 document.addEventListener('keydown', ev => {
   let action = false
