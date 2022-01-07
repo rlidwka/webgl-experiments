@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import { GLTFLoader } from './node_modules/three/examples/jsm/loaders/GLTFLoader.js'
 import { ConvexGeometry } from './node_modules/three/examples/jsm/geometries/ConvexGeometry.js'
 import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js';
+import { Line2 } from './node_modules/three/examples/jsm/lines/Line2.js';
+import { LineMaterial } from './node_modules/three/examples/jsm/lines/LineMaterial.js';
+import { LineGeometry } from './node_modules/three/examples/jsm/lines/LineGeometry.js';
 import './node_modules/knockout/build/output/knockout-latest.js'
 
 const fuel_types = {
@@ -94,10 +97,159 @@ let tank_popover = new class TankPopover extends Popover {
   }
 }
 
+function vec2str(vec) {
+  return `${vec.x}:${vec.y}:${vec.z}`
+}
+
+let pipe_mgr = new class PipeManager {
+  constructor() {
+    this.start = null
+    this.mesh = null
+  }
+
+  click(pos, vox) {
+    if (!this.start) {
+      this.start = { pos, vox }
+      return
+    }
+
+    if (this.start.vox?.contains === vox?.contains) {
+      this.start = null
+      return
+    }
+  }
+
+  move(pos, vox) {
+    if (this.mesh) {
+      scene.remove(this.mesh)
+      this.mesh = null
+    }
+
+    if (!this.start) return
+
+    let path = pipe_mgr.pathfind(this.start.pos, pos)
+    if (!path) return
+
+    this.mesh = pipe_mgr.draw(path)
+    scene.add(this.mesh)
+  }
+
+  is_free(pos_f) {
+    let pos = pos_f.clone().round()
+    let vox = ship.maybe_voxel(pos.x, pos.y, pos.z)
+    if (!vox) return false
+    if (!vox.deck) return false
+    if (vox.contains) return false
+    return true
+  }
+
+  get_adjacent(pos_f) {
+    let pos = pos_f.clone().round()
+    let result = new Set()
+    let vec
+
+    vec = Vec3(pos_f.x - .5, pos_f.y, pos_f.z)
+    if (this.is_free(vec)) result.add(vec)
+    vec = Vec3(pos_f.x + .5, pos_f.y, pos_f.z)
+    if (this.is_free(vec)) result.add(vec)
+
+    vec = Vec3(pos_f.x, pos_f.y - .5, pos_f.z)
+    if (this.is_free(vec)) result.add(vec)
+    vec = Vec3(pos_f.x, pos_f.y + .5, pos_f.z)
+    if (this.is_free(vec)) result.add(vec)
+
+    vec = Vec3(pos_f.x, pos_f.y, pos_f.z - .5)
+    if (this.is_free(vec)) result.add(vec)
+    vec = Vec3(pos_f.x, pos_f.y, pos_f.z + .5)
+    if (this.is_free(vec)) result.add(vec)
+
+    return result
+  }
+
+  pathfind(from_f, to_f) {
+    let visited = new Set()
+    let tentative = new Set()
+    let distances = new Map()
+    let previous = new Map()
+    let to_f_str = vec2str(to_f)
+
+    let from_f_s = vec2str(from_f)
+    distances.set(from_f_s, 0)
+    previous.set(from_f_s, null)
+    tentative.add(from_f_s)
+
+    while (tentative.size > 0) {
+      let current_s = null
+      let currdist = Infinity
+
+      for (let t of tentative) {
+        let d = distances.get(t)
+        if (d < currdist) {
+          current_s = t
+          currdist = d
+        }
+      }
+
+      if (current_s === to_f_str) break
+
+      let current = Vec3(...current_s.split(':').map(Number))
+
+      for (let vec of this.get_adjacent(current)) {
+        let s = vec2str(vec)
+        let vecdist = distances.has(s) ? distances.get(s) : Infinity
+        if (vecdist > currdist + 1) {
+          distances.set(s, currdist + 1)
+          previous.set(s, current_s)
+          tentative.add(s)
+        }
+      }
+
+      tentative.delete(vec2str(current))
+      visited.add(vec2str(current))
+    }
+
+    if (!previous.has(to_f_str)) return null
+
+    let result = []
+    let backtrack_curr = to_f_str
+
+    while (backtrack_curr) {
+      result.push(Vec3(...backtrack_curr.split(':').map(Number)))
+      backtrack_curr = previous.get(backtrack_curr)
+    }
+    return result
+  }
+
+  draw(path) {
+    let geometry = new LineGeometry()
+
+    let positions = []
+    let colors = []
+
+    for (let v of path) {
+      positions.push(v.x, v.y, v.z)
+      colors.push(1, 1, 1)
+    }
+
+    geometry.setPositions(positions)
+    geometry.setColors(colors)
+
+    let material = new LineMaterial({
+      color: 0xffffff,
+      linewidth: .05,
+      vertexColors: true,
+      alphaToCoverage: true,
+      worldUnits: true
+    })
+
+    return new Line2(geometry, material)
+  }
+}
+
 class Ship {
   constructor() {
     // coordinates are: [ z, x, y ]
-    this._voxels = []
+    this._voxels = {}
     this.level = 0
   }
 
@@ -113,7 +265,7 @@ class Ship {
   }
 
   clean_voxel(x, y, z) {
-    if (Object.keys(this._voxels[z][x][y]).length > 1) return
+    if (this._voxels[z][x][y].contains) return
     if (this._voxels[z][x][y].drawables.size) return
     delete this._voxels[z][x][y]
     if (Object.keys(this._voxels[z][x]).length) return
@@ -134,7 +286,6 @@ class Ship {
     let vec = Vec3()
 
     for (let z of Object.keys(this._voxels)) {
-      if (z > this.level) continue
       z = +z
       for (let x of Object.keys(this._voxels[z])) {
         x = +x
@@ -142,7 +293,7 @@ class Ship {
           vec.x = +x
           vec.y = +y
           vec.z = +z
-          fn(this._voxels[z][x][y], vec)
+          if (fn(this._voxels[z][x][y], vec) === false) return
         }
       }
     }
@@ -266,6 +417,7 @@ class Ship {
     let group = new THREE.Group()
 
     this.each((vox, vec) => {
+      if (vec.z > ship.level) return
       if (!vox.deck) return
       let mesh
       mesh = this.armor(vox, vec, 0, 0, 1)
@@ -285,6 +437,7 @@ class Ship {
     let draw_id = Math.random()
 
     this.each((vox, vec) => {
+      if (vec.z > ship.level) return
       for (let drawable of vox.drawables) {
         let mesh = drawable.draw(draw_id, vec)
         if (mesh) group.add(mesh)
@@ -340,25 +493,27 @@ class Deck extends Placeable {
   can_place(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
 
-    for (let dx = 0; dx < this.size; dx++) {
-      for (let dy = 0; dy < this.size; dy++) {
-        if (ship.is_inside(vec.x + dx, vec.y + dy, vec.z)) return null
-        if (!ship.is_empty(vec.x + dx, vec.y + dy, vec.z)) return null
+    if (Object.keys(ship._voxels).length) {
+      for (let dx = 0; dx < this.size; dx++) {
+        for (let dy = 0; dy < this.size; dy++) {
+          if (ship.is_inside(vec.x + dx, vec.y + dy, vec.z)) return null
+          if (!ship.is_empty(vec.x + dx, vec.y + dy, vec.z)) return null
+        }
       }
-    }
 
-    let borders = false
-    LOOP: for (let d = 0; d < this.size; d++) {
-      if (ship.is_inside(vec.x + d, vec.y - 1, vec.z) ||
-          ship.is_inside(vec.x + d, vec.y + this.size, vec.z) ||
-          ship.is_inside(vec.x - 1, vec.y + d, vec.z) ||
-          ship.is_inside(vec.x + this.size, vec.y + d, vec.z)) {
-        borders = true
-        break LOOP
+      let borders = false
+      LOOP: for (let d = 0; d < this.size; d++) {
+        if (ship.is_inside(vec.x + d, vec.y - 1, vec.z) ||
+            ship.is_inside(vec.x + d, vec.y + this.size, vec.z) ||
+            ship.is_inside(vec.x - 1, vec.y + d, vec.z) ||
+            ship.is_inside(vec.x + this.size, vec.y + d, vec.z)) {
+          borders = true
+          break LOOP
+        }
       }
-    }
 
-    if (!borders) return null
+      if (!borders) return null
+    }
 
     vec.add(this.offset)
     return vec
@@ -369,13 +524,64 @@ class Deck extends Placeable {
 
     for (let dx = 0; dx < this.size; dx++) {
       for (let dy = 0; dy < this.size; dy++) {
-        ship.get_voxel(vec.x + dx, vec.y + dy, vec.z).deck = this
-        ship.get_voxel(vec.x + dx, vec.y + dy, vec.z).drawables.add(this)
+        let d = this.clone()
+        d.position = Vec3(vec.x + dx, vec.y + dy, vec.z)
+        ship.get_voxel(vec.x + dx, vec.y + dy, vec.z).deck = d
+        ship.get_voxel(vec.x + dx, vec.y + dy, vec.z).drawables.add(d)
       }
     }
   }
 
+  can_remove() {
+    if (this.dfs_cache?.result) return this.dfs_cache.result
+    let any, count = 0
+
+    ship.each((vox, vec) => {
+      if (vox.deck && vox.deck !== this) {
+        any = vox.deck
+        count++
+      }
+    })
+
+    let traversed = new Set()
+
+    let dfs = (deck, dx, dy, dz) => {
+      let v = ship.maybe_voxel(deck.position.x + dx, deck.position.y + dy, deck.position.z + dz)
+      if (!v?.deck || v.deck === this) return
+      if (traversed.has(v.deck)) return
+      traversed.add(v.deck)
+      dfs(v.deck, 0, 0, 1)
+      dfs(v.deck, 0, 1, 0)
+      dfs(v.deck, 1, 0, 0)
+      dfs(v.deck, 0, 0, -1)
+      dfs(v.deck, 0, -1, 0)
+      dfs(v.deck, -1, 0, 0)
+    }
+
+    if (!any) return true
+
+    dfs(any, 0, 0, 0)
+    this.dfs_cache = { result: count === traversed.size }
+
+    return count === traversed.size
+  }
+
+  do_remove() {
+    let vec = this.position
+    delete ship.get_voxel(vec.x, vec.y, vec.z).deck
+    ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
+    ship.clean_voxel(vec.x, vec.y, vec.z)
+    if (!(ship.level in ship._voxels)) {
+      if ((ship.level + 1) in ship._voxels) ship.level++
+      if ((ship.level - 1) in ship._voxels) ship.level--
+    }
+
+    let upper = ship.maybe_voxel(vec.x, vec.y, vec.z + 1)?.deck
+    if (upper) upper.floor = true
+  }
+
   draw(id = 0, vec = null) {
+    this.dfs_cache = null
     if (!vec) {
       let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
       let material = new THREE.MeshBasicMaterial()
@@ -500,8 +706,14 @@ class Stairs extends Placeable {
   can_place(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
     vec.z = ship.level
-    if (!ship.is_inside(vec.x, vec.y, vec.z)) return null
+
+    let vox
+
+    vox = ship.maybe_voxel(vec.x, vec.y, vec.z)
+    if (!vox?.deck) return null
+    if (!vox?.deck?.floor) return null
     if (!ship.is_empty(vec.x, vec.y, vec.z)) return null
+
     if (ship.is_inside(vec.x, vec.y, vec.z + this.direction)) return null
     if (!ship.is_empty(vec.x, vec.y, vec.z + this.direction)) return null
 
@@ -513,6 +725,7 @@ class Stairs extends Placeable {
   do_place(ship, vec) {
     vec = vec.clone().sub(this.offset)
     if (this.direction < 0) vec.z++
+    this.position = vec
 
     let deck = new Deck(1)
     deck.do_place(ship, Vec3(vec.x, vec.y, vec.z + this.direction))
@@ -526,6 +739,18 @@ class Stairs extends Placeable {
 
     ship.level += this.direction
     document.getElementsByClassName('icon-block-1')[0].click()
+  }
+
+  can_remove() {
+    return true
+  }
+
+  do_remove() {
+    let vec = this.position
+    delete ship.get_voxel(vec.x, vec.y, vec.z).contains
+    ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
+    delete ship.get_voxel(vec.x, vec.y, vec.z + this.direction).contains
+    ship.get_voxel(vec.x, vec.y, vec.z + this.direction).drawables.delete(this)
   }
 
   draw(id = 0, vec = null) {
@@ -560,6 +785,10 @@ class Engine extends Placeable {
   constructor() {
     super()
     this.offset = Vec3(0, 1 - .22, 0)
+  }
+
+  can_connect(vec) {
+    return true
   }
 
   can_place(ship, vec) {
@@ -634,9 +863,15 @@ class Tank extends Placeable {
     this.liquid = null
   }
 
+  can_connect(vec) {
+    return true
+  }
+
   can_place(ship, vec) {
     vec = vec.clone().sub(this.offset).round()
-    if (!ship.is_inside(vec.x, vec.y, vec.z)) return null
+    let vox = ship.maybe_voxel(vec.x, vec.y, vec.z)
+    if (!vox?.deck) return null
+    if (!vox?.deck?.floor) return null
     if (!ship.is_empty(vec.x, vec.y, vec.z)) return null
 
     let t1 = ship.maybe_voxel(vec.x, vec.y - 1, vec.z)
@@ -689,7 +924,6 @@ class Tank extends Placeable {
 
   do_remove() {
     if (this.next) return this.next.do_remove()
-    console.log(ship)
 
     let vec = this.position
     delete ship.get_voxel(vec.x, vec.y, vec.z).contains
@@ -830,7 +1064,6 @@ window._ship = ship
 for (let y=-2;y<=0;y++)
 for (let z=-2;z<=0;z++)
 new Deck(1).do_place(ship, Vec3(x, y, z))
-new Engine().do_place(ship, Vec3(-1, -2.2199999999999998, 0))
 new Tank().do_place(ship, Vec3(1, 1, 0))
 //new Tank().do_place(ship, Vec3(0, 1, 0))
 //new Tank().do_place(ship, Vec3(1, 2, 0))
@@ -843,12 +1076,22 @@ new Deck(1).do_place(ship, Vec3(1, 1, 0))
 new Deck(1).do_place(ship, Vec3(1, 2, 0))
 new Deck(1).do_place(ship, Vec3(0, 2, 0))
 new Deck(1).do_place(ship, Vec3(2, 0, 0))
+new Deck(1).do_place(ship, Vec3(-1, 3, 0))
 new Deck(1).do_place(ship, Vec3(3, 0, 0))
+new Deck(1).do_place(ship, Vec3(0, 3, 0))
+new Deck(1).do_place(ship, Vec3(1, 3, 0))
+new Deck(1).do_place(ship, Vec3(2, 3, 0))
+new Deck(1).do_place(ship, Vec3(3, 1, 0))
+new Deck(1).do_place(ship, Vec3(3, 2, 0))
+new Deck(1).do_place(ship, Vec3(3, 3, 0))
 new Deck(1).do_place(ship, Vec3(-1, 0, 0))
+new Deck(1).do_place(ship, Vec3(-1, 1, 0))
+new Deck(1).do_place(ship, Vec3(-1, 2, 0))
 new Tank().do_place(ship, Vec3(1, 0, 0))
 new Tank().do_place(ship, Vec3(1, 1, 0))
-new Tank().do_place(ship, Vec3(0, 1, 0))
+new Tank().do_place(ship, Vec3(0, 2, 0))
 new Tank().do_place(ship, Vec3(1, 2, 0))
+new Engine().do_place(ship, Vec3(-1, -0.21999999999999997, 0))
 
 
 function ship_draw() {
@@ -874,7 +1117,7 @@ controls.update()
 let selected_mesh
 let selected_placeable
 let selected_action
-let highlighted
+let highlighted = new Set()
 
 camera.position.z = 5
 
@@ -918,10 +1161,26 @@ document.addEventListener('click', ev => {
     let v = ship.maybe_voxel(pos.x, pos.y, pos.z)
     if (!selected_action) {
       v?.contains?.click?.(ev)
-    } else if (selected_action === 'remove' && v?.contains?.can_remove?.(pos)) {
-      v.contains.do_remove()
-      highlighted = null
-      ship_draw()
+    } else if (selected_action === 'remove') {
+      if (v?.contains) {
+        if (v.contains.can_remove?.(pos)) {
+          v.contains.do_remove()
+          highlighted = new Set()
+          ship_draw()
+        }
+      } else if (v?.deck) {
+        if (v.deck.can_remove?.(pos)) {
+          v.deck.do_remove()
+          highlighted = new Set()
+          ship_draw()
+        }
+      }
+    } else if (selected_action === 'pipe') {
+      if (v?.contains) {
+        if (v.contains.can_connect) {
+          pipe_mgr.click(pos, v)
+        }
+      }
     }
     return
   }
@@ -936,26 +1195,48 @@ document.addEventListener('click', ev => {
 })
 
 document.addEventListener('mousemove', ev => {
-  highlighted?.highlight(false)
-  highlighted = null
+  for (let h of highlighted) h.highlight(false)
+  highlighted = new Set()
 
   if (ev.target !== renderer.domElement) return
 
   let pos = event_world_position(ev)
 
   if (!selected_placeable) {
+    renderer.domElement.style.cursor = 'default'
     pos.round()
     let v = ship.maybe_voxel(pos.x, pos.y, pos.z)
     if (!selected_action && v?.contains?.click) {
-      highlighted = v.contains
+      highlighted.add(v.contains)
       v.contains.highlight(0xa3f0ff)
       renderer.domElement.style.cursor = 'pointer'
-    } else if (selected_action === 'remove' && v?.contains?.can_remove(pos)) {
-      highlighted = v.contains
-      v.contains.highlight(0xaa0000)
-      renderer.domElement.style.cursor = 'pointer'
-    } else {
-      renderer.domElement.style.cursor = 'default'
+    } else if (selected_action === 'remove') {
+      if (v?.contains) {
+        if (v.contains.can_remove?.(pos)) {
+          highlighted.add(v.contains)
+          v.contains.highlight(0xaa0000)
+          renderer.domElement.style.cursor = 'pointer'
+        }
+      } else if (v?.deck) {
+        if (v.deck.can_remove?.(pos)) {
+          highlighted.add(v.deck)
+          v.deck.highlight(0xaa0000)
+          renderer.domElement.style.cursor = 'pointer'
+        }
+      }
+    } else if (selected_action === 'pipe') {
+      ship.each((vox, vec) => {
+        if (!vox.contains?.can_connect) return
+        vox.contains.highlight(0x00aa00)
+        highlighted.add(vox.contains)
+      })
+      if (v?.contains) {
+        if (v.contains.can_connect) {
+          v.contains.highlight(0xa3f0ff)
+          renderer.domElement.style.cursor = 'pointer'
+        }
+      }
+      pipe_mgr.move(pos, v)
     }
     return
   }
@@ -996,19 +1277,21 @@ function select_action(action) {
       selected_mesh = null
       selected_placeable = null
     }
+
     selected_action = action
   }
 }
 
 let controls_fn = {
-  'select': select_action(null),
-  'remove': select_action('remove'),
-  'block-1': select_class(Deck, 1),
-  'block-2': select_class(Deck, 2),
-  'block-3': select_class(Deck, 3),
-  'engine': select_class(Engine),
-  'tank': select_class(Tank),
-  'level-up': select_class(Stairs, 1),
+  'select':     select_action(null),
+  'remove':     select_action('remove'),
+  'pipe':       select_action('pipe'),
+  'block-1':    select_class(Deck, 1),
+  'block-2':    select_class(Deck, 2),
+  'block-3':    select_class(Deck, 3),
+  'engine':     select_class(Engine),
+  'tank':       select_class(Tank),
+  'level-up':   select_class(Stairs, 1),
   'level-down': select_class(Stairs, -1),
 }
 
@@ -1025,7 +1308,7 @@ document.getElementsByClassName('controls')[0].addEventListener('click', ev => {
   ev.target.classList.add('active')
 })
 
-document.getElementsByClassName('icon-cancel')[0].click()
+document.getElementsByClassName('icon-exchange')[0].click()
 
 document.addEventListener('keydown', ev => {
   let action = false
@@ -1064,3 +1347,6 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
+
+//scene.add(pipe_mgr.draw(pipe_mgr.pathfind(Vec3(.25,.25,.25), Vec3(-.25,1.75,-.25))))
+//scene.add(pipe_mgr.draw([Vec3(.25,.25,.25), Vec3(-.25,1.75,-.25)]))
