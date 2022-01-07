@@ -108,8 +108,16 @@ let pipe_mgr = new class PipeManager {
   }
 
   click(pos, vox) {
+    this.reset()
+
     if (!this.start) {
       this.start = { pos, vox }
+      this.from_set = new Set()
+      for (let dx of [ -.25, .25 ]) 
+        for (let dy of [ -.25, .25 ])
+          for (let dz of [ -.25, .25 ]) {
+            this.from_set.add(vec2str(Vec3(pos.x + dx, pos.y + dy, pos.z + dz)))
+          }
       return
     }
 
@@ -119,22 +127,36 @@ let pipe_mgr = new class PipeManager {
     }
   }
 
-  move(pos, vox) {
+  reset() {
     if (this.mesh) {
       scene.remove(this.mesh)
       this.mesh = null
     }
+  }
 
+  move(pos, vox) {
+    this.reset()
+    if (!vox?.deck) return
     if (!this.start) return
+    if (vox.contains?.equals(this.start.vox.contains)) return
 
-    let path = pipe_mgr.pathfind(this.start.pos, pos)
+    let to_set = new Set()
+    for (let dx of [ -.25, .25 ]) 
+      for (let dy of [ -.25, .25 ])
+        for (let dz of [ -.25, .25 ]) {
+          to_set.add(vec2str(Vec3(pos.x + dx, pos.y + dy, pos.z + dz)))
+        }
+
+    let path = pipe_mgr.pathfind(this.from_set, to_set)
     if (!path) return
 
-    this.mesh = pipe_mgr.draw(path)
+    this.mesh = new Pipe(path).draw(path)
     scene.add(this.mesh)
   }
 
-  is_free(pos_f) {
+  is_free(pos_f, to_set) {
+    if (to_set.has(vec2str(pos_f))) return true
+
     let pos = pos_f.clone().round()
     let vox = ship.maybe_voxel(pos.x, pos.y, pos.z)
     if (!vox) return false
@@ -143,40 +165,41 @@ let pipe_mgr = new class PipeManager {
     return true
   }
 
-  get_adjacent(pos_f) {
+  get_adjacent(pos_f, to_set) {
     let pos = pos_f.clone().round()
     let result = new Set()
     let vec
 
     vec = Vec3(pos_f.x - .5, pos_f.y, pos_f.z)
-    if (this.is_free(vec)) result.add(vec)
+    if (this.is_free(vec, to_set)) result.add(vec)
     vec = Vec3(pos_f.x + .5, pos_f.y, pos_f.z)
-    if (this.is_free(vec)) result.add(vec)
+    if (this.is_free(vec, to_set)) result.add(vec)
 
     vec = Vec3(pos_f.x, pos_f.y - .5, pos_f.z)
-    if (this.is_free(vec)) result.add(vec)
+    if (this.is_free(vec, to_set)) result.add(vec)
     vec = Vec3(pos_f.x, pos_f.y + .5, pos_f.z)
-    if (this.is_free(vec)) result.add(vec)
+    if (this.is_free(vec, to_set)) result.add(vec)
 
     vec = Vec3(pos_f.x, pos_f.y, pos_f.z - .5)
-    if (this.is_free(vec)) result.add(vec)
+    if (this.is_free(vec, to_set)) result.add(vec)
     vec = Vec3(pos_f.x, pos_f.y, pos_f.z + .5)
-    if (this.is_free(vec)) result.add(vec)
+    if (this.is_free(vec, to_set)) result.add(vec)
 
     return result
   }
 
-  pathfind(from_f, to_f) {
+  pathfind(from_set, to_set) {
     let visited = new Set()
     let tentative = new Set()
     let distances = new Map()
     let previous = new Map()
-    let to_f_str = vec2str(to_f)
+    let found_s
 
-    let from_f_s = vec2str(from_f)
-    distances.set(from_f_s, 0)
-    previous.set(from_f_s, null)
-    tentative.add(from_f_s)
+    for (let from_f_s of from_set) {
+      distances.set(from_f_s, 0)
+      previous.set(from_f_s, null)
+      tentative.add(from_f_s)
+    }
 
     while (tentative.size > 0) {
       let current_s = null
@@ -190,11 +213,14 @@ let pipe_mgr = new class PipeManager {
         }
       }
 
-      if (current_s === to_f_str) break
+      if (to_set.has(current_s)) {
+        found_s = current_s
+        break
+      }
 
       let current = Vec3(...current_s.split(':').map(Number))
 
-      for (let vec of this.get_adjacent(current)) {
+      for (let vec of this.get_adjacent(current, to_set)) {
         let s = vec2str(vec)
         let vecdist = distances.has(s) ? distances.get(s) : Infinity
         if (vecdist > currdist + 1) {
@@ -208,10 +234,10 @@ let pipe_mgr = new class PipeManager {
       visited.add(vec2str(current))
     }
 
-    if (!previous.has(to_f_str)) return null
+    if (!found_s) return null
 
     let result = []
-    let backtrack_curr = to_f_str
+    let backtrack_curr = found_s
 
     while (backtrack_curr) {
       result.push(Vec3(...backtrack_curr.split(':').map(Number)))
@@ -219,14 +245,28 @@ let pipe_mgr = new class PipeManager {
     }
     return result
   }
+}
 
-  draw(path) {
+class Pipe {
+  constructor(path) {
+    this.path = path
+  }
+
+  do_place(ship) {
+    for (let p of this.path) {
+      let vec = p.clone().round()
+      ship.get_voxel(vec.x, vec.y, vec.z).drawables.add(this)
+      ship.get_voxel(vec.x, vec.y, vec.z).pipes[vec2str(p.clone().sub(vec))] = this
+    }
+  }
+
+  draw(id = 0, vec = null) {
     let geometry = new LineGeometry()
 
     let positions = []
     let colors = []
 
-    for (let v of path) {
+    for (let v of this.path) {
       positions.push(v.x, v.y, v.z)
       colors.push(1, 1, 1)
     }
@@ -256,7 +296,7 @@ class Ship {
   get_voxel(x, y, z) {
     this._voxels[z] ??= {}
     this._voxels[z][x] ??= {}
-    this._voxels[z][x][y] ??= { drawables: new Set() }
+    this._voxels[z][x][y] ??= { drawables: new Set(), pipes: {} }
     return this._voxels[z][x][y]
   }
 
@@ -475,6 +515,10 @@ class Placeable {
         if (this.matmap.has(mesh)) mesh.material = this.matmap.get(mesh)
       }
     })
+  }
+
+  equals(x) {
+    return this === x
   }
 }
 
@@ -863,6 +907,16 @@ class Tank extends Placeable {
     this.liquid = null
   }
 
+  equals(x) {
+    if (!(x instanceof this.constructor)) return false
+    let a = this
+    let b = x
+
+    while (a.next) a = a.next
+    while (b.next) b = b.next
+    return a === b
+  }
+
   can_connect(vec) {
     return true
   }
@@ -1087,6 +1141,9 @@ new Deck(1).do_place(ship, Vec3(3, 3, 0))
 new Deck(1).do_place(ship, Vec3(-1, 0, 0))
 new Deck(1).do_place(ship, Vec3(-1, 1, 0))
 new Deck(1).do_place(ship, Vec3(-1, 2, 0))
+new Deck(1).do_place(ship, Vec3(-2, 0, 0))
+new Deck(1).do_place(ship, Vec3(-2, 1, 0))
+new Deck(1).do_place(ship, Vec3(-2, 2, 0))
 new Tank().do_place(ship, Vec3(1, 0, 0))
 new Tank().do_place(ship, Vec3(1, 1, 0))
 new Tank().do_place(ship, Vec3(0, 2, 0))
