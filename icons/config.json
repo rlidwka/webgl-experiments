@@ -153,6 +153,24 @@
       "css": "cancel",
       "code": 59409,
       "src": "fontawesome"
+    },
+    {
+      "uid": "d61be837c725a299b432dcbee2ecdae6",
+      "css": "certificate",
+      "code": 61603,
+      "src": "fontawesome"
+    },
+    {
+      "uid": "77928c849ac2ae6e77d4eae9f2927c00",
+      "css": "flash-1",
+      "code": 59410,
+      "src": "mfglabs"
+    },
+    {
+      "uid": "6632ce1019f9115842335622cb55f4e7",
+      "css": "empire",
+      "code": 61905,
+      "src": "fontawesome"
     }
   ]
 }
