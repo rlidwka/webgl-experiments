@@ -1079,30 +1079,30 @@ class Tank extends Placeable {
 }
 
 
-const texture = new THREE.TextureLoader().load('/textures/metal.jpg')
-texture.wrapS = THREE.RepeatWrapping
-texture.wrapT = THREE.RepeatWrapping
-texture.repeat.set(2, 2)
+  const texture = new THREE.TextureLoader().load('/textures/metal.jpg')
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(2, 2)
 
-const texture_beam = new THREE.TextureLoader().load('/textures/metal_beam.jpg')
-texture_beam.wrapS = THREE.RepeatWrapping
-texture_beam.wrapT = THREE.RepeatWrapping
-texture_beam.repeat.set(2, 2)
+  const texture_beam = new THREE.TextureLoader().load('/textures/metal_beam.jpg')
+  texture_beam.wrapS = THREE.RepeatWrapping
+  texture_beam.wrapT = THREE.RepeatWrapping
+  texture_beam.repeat.set(2, 2)
 
-const texture_alum = new THREE.TextureLoader().load('/textures/aluminium.jpg')
-texture_beam.wrapS = THREE.RepeatWrapping
-texture_beam.wrapT = THREE.RepeatWrapping
-texture_beam.repeat.set(1, 1)
+  const texture_alum = new THREE.TextureLoader().load('/textures/aluminium.jpg')
+  texture_beam.wrapS = THREE.RepeatWrapping
+  texture_beam.wrapT = THREE.RepeatWrapping
+  texture_beam.repeat.set(1, 1)
 
-const texture_gl = new THREE.TextureLoader().load('/textures/uv_grid_opengl.jpg')
-texture_beam.wrapS = THREE.RepeatWrapping
-texture_beam.wrapT = THREE.RepeatWrapping
-texture_beam.repeat.set(1, 1)
+  const texture_gl = new THREE.TextureLoader().load('/textures/uv_grid_opengl.jpg')
+  texture_beam.wrapS = THREE.RepeatWrapping
+  texture_beam.wrapT = THREE.RepeatWrapping
+  texture_beam.repeat.set(1, 1)
 
-const texture_hull = new THREE.TextureLoader().load('/textures/hull.jpg')
-texture_beam.wrapS = THREE.RepeatWrapping
-texture_beam.wrapT = THREE.RepeatWrapping
-texture_beam.repeat.set(1, 1)
+  const texture_hull = new THREE.TextureLoader().load('/textures/hull.jpg')
+  texture_beam.wrapS = THREE.RepeatWrapping
+  texture_beam.wrapT = THREE.RepeatWrapping
+  texture_beam.repeat.set(1, 1)
 
 
 let scene = new THREE.Scene()
@@ -1123,32 +1123,32 @@ new Tank().do_place(ship, Vec3(1, 1, 0))
 //new Tank().do_place(ship, Vec3(1, 2, 0))
 */
 
-new Deck(1).do_place(ship, Vec3(0, 0, 0))
-new Deck(1).do_place(ship, Vec3(1, 0, 0))
-new Deck(1).do_place(ship, Vec3(0, 1, 0))
-new Deck(1).do_place(ship, Vec3(1, 1, 0))
-new Deck(1).do_place(ship, Vec3(1, 2, 0))
-new Deck(1).do_place(ship, Vec3(0, 2, 0))
-new Deck(1).do_place(ship, Vec3(2, 0, 0))
-new Deck(1).do_place(ship, Vec3(-1, 3, 0))
-new Deck(1).do_place(ship, Vec3(3, 0, 0))
-new Deck(1).do_place(ship, Vec3(0, 3, 0))
-new Deck(1).do_place(ship, Vec3(1, 3, 0))
-new Deck(1).do_place(ship, Vec3(2, 3, 0))
-new Deck(1).do_place(ship, Vec3(3, 1, 0))
-new Deck(1).do_place(ship, Vec3(3, 2, 0))
-new Deck(1).do_place(ship, Vec3(3, 3, 0))
-new Deck(1).do_place(ship, Vec3(-1, 0, 0))
-new Deck(1).do_place(ship, Vec3(-1, 1, 0))
-new Deck(1).do_place(ship, Vec3(-1, 2, 0))
-new Deck(1).do_place(ship, Vec3(-2, 0, 0))
-new Deck(1).do_place(ship, Vec3(-2, 1, 0))
-new Deck(1).do_place(ship, Vec3(-2, 2, 0))
-new Tank().do_place(ship, Vec3(1, 0, 0))
-new Tank().do_place(ship, Vec3(1, 1, 0))
-new Tank().do_place(ship, Vec3(0, 2, 0))
-new Tank().do_place(ship, Vec3(1, 2, 0))
-new Engine().do_place(ship, Vec3(-1, -0.21999999999999997, 0))
+  new Deck(1).do_place(ship, Vec3(0, 0, 0))
+  new Deck(1).do_place(ship, Vec3(1, 0, 0))
+  new Deck(1).do_place(ship, Vec3(0, 1, 0))
+  new Deck(1).do_place(ship, Vec3(1, 1, 0))
+  new Deck(1).do_place(ship, Vec3(1, 2, 0))
+  new Deck(1).do_place(ship, Vec3(0, 2, 0))
+  new Deck(1).do_place(ship, Vec3(2, 0, 0))
+  new Deck(1).do_place(ship, Vec3(-1, 3, 0))
+  new Deck(1).do_place(ship, Vec3(3, 0, 0))
+  new Deck(1).do_place(ship, Vec3(0, 3, 0))
+  new Deck(1).do_place(ship, Vec3(1, 3, 0))
+  new Deck(1).do_place(ship, Vec3(2, 3, 0))
+  new Deck(1).do_place(ship, Vec3(3, 1, 0))
+  new Deck(1).do_place(ship, Vec3(3, 2, 0))
+  new Deck(1).do_place(ship, Vec3(3, 3, 0))
+  new Deck(1).do_place(ship, Vec3(-1, 0, 0))
+  new Deck(1).do_place(ship, Vec3(-1, 1, 0))
+  new Deck(1).do_place(ship, Vec3(-1, 2, 0))
+  new Deck(1).do_place(ship, Vec3(-2, 0, 0))
+  new Deck(1).do_place(ship, Vec3(-2, 1, 0))
+  new Deck(1).do_place(ship, Vec3(-2, 2, 0))
+  new Tank().do_place(ship, Vec3(1, 0, 0))
+  new Tank().do_place(ship, Vec3(1, 1, 0))
+  new Tank().do_place(ship, Vec3(0, 2, 0))
+  new Tank().do_place(ship, Vec3(1, 2, 0))
+  new Engine().do_place(ship, Vec3(-1, -0.21999999999999997, 0))
 
 
 function ship_draw() {
