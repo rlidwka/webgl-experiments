@@ -35,6 +35,31 @@ await Promise.all([ 'engine', 'tank', 'stairs' ].map(file => {
   })
 }))
 
+let textures = {}
+for (let path of [ 'metal', 'metal_beam', 'aluminium', 'hull', 'pvc_solid' ]) {
+  textures[path] = new THREE.TextureLoader().load('/textures/' + path + '.jpg')
+  textures[path].wrapS = THREE.RepeatWrapping
+  textures[path].wrapT = THREE.RepeatWrapping
+  textures[path].repeat.set(1, 1)
+}
+/*  texture.repeat.set(2, 2)
+
+  const texture_beam = new THREE.TextureLoader().load('/textures/metal_beam.jpg')
+  texture_beam.wrapS = THREE.RepeatWrapping
+  texture_beam.wrapT = THREE.RepeatWrapping
+  texture_beam.repeat.set(2, 2)
+
+  const texture_alum = new THREE.TextureLoader().load('/textures/aluminium.jpg')
+  texture_beam.wrapS = THREE.RepeatWrapping
+  texture_beam.wrapT = THREE.RepeatWrapping
+  texture_beam.repeat.set(1, 1)
+
+  const texture_hull = new THREE.TextureLoader().load('/textures/hull.jpg')
+  texture_beam.wrapS = THREE.RepeatWrapping
+  texture_beam.wrapT = THREE.RepeatWrapping
+  texture_beam.repeat.set(1, 1)*/
+
+
 class Popover {
   constructor(cls) {
     this.element = document.getElementsByClassName(cls)[0]
@@ -138,9 +163,11 @@ let pipe_mgr = new class PipeManager {
       return
     }
 
-    if (this.start.vox?.contains === vox?.contains) {
-      this.start = null
-      return
+    if (this.start.vox?.contains && vox?.contains) {
+      if (this.start.vox.contains.equals(vox.contains)) {
+        this.start = null
+        return
+      }
     }
 
     let to_set = vox.contains.can_connect(pos)
@@ -206,7 +233,7 @@ let pipe_mgr = new class PipeManager {
     let path = pipe_mgr.pathfind(this.from_set, to_set, this.start.vox.contains, vox.contains)
     if (!path) return
 
-    this.mesh = new Pipe(path).draw(path)
+    this.mesh = new Pipe(path).draw('overlay', path)
     scene.add(this.mesh)
   }
 
@@ -326,7 +353,7 @@ class Pipe {
     }
   }
 
-  draw(id = 0, vec = null) {
+  draw(mode, id = 0, vec = null) {
     if (id && id === this.draw_id) return
 
     this.draw_id = id
@@ -519,7 +546,7 @@ class Ship {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
 
     let material = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
-    material.map = texture_hull
+    material.map = textures.hull
 
     let mesh = new THREE.Mesh(geometry, material)
     let t
@@ -536,10 +563,22 @@ class Ship {
     return mesh
   }
 
-  draw() {
+  draw(mode) {
+    let _level = ship.level
     let group = new THREE.Group()
+    if (mode !== 'main') ship.level = Infinity
+
+    let size_min = Vec3(Infinity, Infinity, Infinity)
+    let size_max = Vec3(-Infinity, -Infinity, -Infinity)
 
     this.each((vox, vec) => {
+      if (size_min.x > vec.x) size_min.x = vec.x
+      if (size_min.y > vec.y) size_min.y = vec.y
+      if (size_min.z > vec.z) size_min.z = vec.z
+      if (size_max.x < vec.x) size_max.x = vec.x
+      if (size_max.y < vec.y) size_max.y = vec.y
+      if (size_max.z < vec.z) size_max.z = vec.z
+
       if (vec.z > ship.level) return
       if (!vox.deck) return
       let mesh
@@ -557,17 +596,43 @@ class Ship {
       if (mesh) group.add(mesh)
     })
 
+    this.max_size = Math.max(
+      size_max.x - size_min.x,
+      size_max.y - size_min.y,
+      size_max.z - size_min.z,
+      2
+    )
+
+    if (Number.isFinite(size_min.x)) {
+      this.center = size_min.add(size_max).multiplyScalar(.5)
+    } else {
+      this.center = Vec3(0, 0, 0)
+    }
+
     let draw_id = Math.random()
 
     this.each((vox, vec) => {
       if (vec.z > ship.level) return
       for (let drawable of vox.drawables) {
-        let mesh = drawable.draw(draw_id, vec)
+        let mesh = drawable.draw(mode, draw_id, vec)
         if (mesh) group.add(mesh)
       }
     })
 
+    this.tick()
+    if (mode !== 'main') ship.level = _level
+
     return group
+  }
+
+  tick() {
+    let group = new THREE.Group()
+
+    this.each((vox, vec) => {
+      for (let drawable of vox.drawables) {
+        drawable.tick?.()
+      }
+    })
   }
 }
 
@@ -576,11 +641,24 @@ class Placeable {
   constructor() {
     this.mesh = null
     this.position = null
-    this.matmap = new WeakMap()
+    this.matmap = new Map()
   }
 
   clone() {
     return new this.constructor()
+  }
+
+  alpha(a) {
+    if (!this.mesh) return
+    this.mesh.traverse(mesh => {
+      if (mesh.type !== 'Mesh') return
+      if (!this.matmap.has(mesh)) this.matmap.set(mesh, mesh.material)
+    })
+
+    for (let material of this.matmap.values()) {
+      material.opacity = a
+      material.transparent = a !== 1 ? true : false
+    }
   }
 
   highlight(color = null) {
@@ -598,6 +676,27 @@ class Placeable {
         if (this.matmap.has(mesh)) mesh.material = this.matmap.get(mesh)
       }
     })
+  }
+
+  do_place() {
+    if (this.constructor === Deck) return
+    if (this.constructor === Tank) return
+    if (this.constructor === Stairs) return
+
+    let start = Date.now()
+    let duration = 400
+    this.tick = () => {
+      let me = this
+      while (me.next) me = me.next
+
+      let now = Date.now()
+      if (now > start + duration) {
+        me.alpha(1)
+        delete this.tick
+        return
+      }
+      me.alpha((now - start) / duration)
+    }
   }
 
   equals(x) {
@@ -655,6 +754,7 @@ class Deck extends Placeable {
         d.position = Vec3(vec.x + dx, vec.y + dy, vec.z)
         ship.get_voxel(vec.x + dx, vec.y + dy, vec.z).deck = d
         ship.get_voxel(vec.x + dx, vec.y + dy, vec.z).drawables.add(d)
+        super.do_place.call(d, ship, vec)
       }
     }
   }
@@ -707,7 +807,7 @@ class Deck extends Placeable {
     if (upper) upper.floor = true
   }
 
-  draw(id = 0, vec = null) {
+  draw(mode, id = 0, vec = null) {
     this.dfs_cache = null
     if (!vec) {
       let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
@@ -721,19 +821,19 @@ class Deck extends Placeable {
     let group = new THREE.Group()
 
     let material_beam1 = new THREE.MeshBasicMaterial({ color: 0x777777 })
-    material_beam1.map = texture_beam
+    material_beam1.map = textures.metal_beam
     material_beam1.polygonOffset = true
     material_beam1.polygonOffsetFactor = -.01
 
     let material_beam2 = new THREE.MeshBasicMaterial({ color: 0x777777 })
-    material_beam2.map = texture_beam
+    material_beam2.map = textures.metal_beam
 
     let { x, y, z } = vec
     let geometry = new THREE.BoxGeometry()
 
     if (this.floor) {
       let material = new THREE.MeshBasicMaterial({ color: 0xffffff })
-      material.map = texture
+      material.map = textures.metal
       material.polygonOffset = true
       material.polygonOffsetFactor = .01
       let cube = new THREE.Mesh(geometry, material)
@@ -802,7 +902,7 @@ class Deck extends Placeable {
       }
     }
 
-    this.mesh = group
+    if (mode === 'main') this.mesh = group
     return group
   }
 }
@@ -866,6 +966,8 @@ class Stairs extends Placeable {
 
     ship.level += this.direction
     document.getElementsByClassName('icon-block-1')[0].click()
+
+    super.do_place(ship, vec)
   }
 
   can_remove() {
@@ -882,7 +984,7 @@ class Stairs extends Placeable {
     ship.clean_voxel(vec.x, vec.y, vec.z + this.direction)
   }
 
-  draw(id = 0, vec = null) {
+  draw(mode, id = 0, vec = null) {
     let stairs = models.stairs.scene.clone()
 
     stairs.scale.x = .4
@@ -897,14 +999,15 @@ class Stairs extends Placeable {
 
     let material = new THREE.MeshBasicMaterial()
     material.color.set(0x888888)
-    material.map = texture_alum
+    material.map = textures.aluminium
 
     stairs.traverse(mesh => {
       if (mesh.type !== 'Mesh') return
       mesh.material = material
     })
 
-    this.mesh = stairs
+    if (mode === 'overlay') this.mesh = stairs
+    if (mode === 'main') this.mesh = stairs
 
     return stairs
   }
@@ -952,6 +1055,8 @@ class Engine extends Placeable {
     ship.get_voxel(vec.x, vec.y, vec.z).contains = this
     ship.get_voxel(vec.x, vec.y, vec.z).drawables.add(this)
     ship.get_voxel(vec.x, vec.y + 1, vec.z).contains = this
+
+    super.do_place(ship, vec)
   }
 
   can_remove() {
@@ -967,7 +1072,7 @@ class Engine extends Placeable {
     ship.clean_voxel(vec.x, vec.y + 1, vec.z)
   }
 
-  draw(id = 0, vec = null) {
+  draw(mode, id = 0, vec = null) {
     let engine = models.engine.scene.clone()
 
     engine.rotation.x = Math.PI / 2
@@ -987,9 +1092,20 @@ class Engine extends Placeable {
         if (mesh.type !== 'Mesh') return
         mesh.material = material
       })
+    } else {
+      let material = new THREE.MeshBasicMaterial()
+      material.color.set(0x777755)
+      material.map = textures.pvc_solid
+
+      engine.traverse(mesh => {
+        if (mesh.type !== 'Mesh') return
+        if (mesh.name === 'nozzle') return
+        mesh.material = material
+      })
     }
 
-    this.mesh = engine
+    if (mode === 'overlay') this.mesh = engine
+    if (mode === 'main') this.mesh = engine
 
     return engine
   }
@@ -1079,6 +1195,8 @@ class Tank extends Placeable {
     if (next?.contains instanceof this.constructor) {
       this.liquid = next.contains.liquid
     }
+
+    super.do_place(ship, vec)
   }
 
   can_remove() {
@@ -1119,7 +1237,7 @@ class Tank extends Placeable {
     super.highlight(color)
   }
 
-  draw(id = 0, vec = null) {
+  draw(mode, id = 0, vec = null) {
     if (this.next) return
 
     let height = 0
@@ -1148,7 +1266,7 @@ class Tank extends Placeable {
 
     let material = new THREE.MeshBasicMaterial()
     material.color.set(0x888888)
-    material.map = texture_alum
+    material.map = textures.aluminium
 
     tank.traverse(mesh => {
       if (mesh.type !== 'Mesh') return
@@ -1182,44 +1300,19 @@ class Tank extends Placeable {
       mesh.material = material
     })
 
-    this.mesh = tank
+    if (mode === 'overlay') this.mesh = tank
+    if (mode === 'main') this.mesh = tank
 
     return tank
   }
 }
 
 
-  const texture = new THREE.TextureLoader().load('/textures/metal.jpg')
-  texture.wrapS = THREE.RepeatWrapping
-  texture.wrapT = THREE.RepeatWrapping
-  texture.repeat.set(2, 2)
-
-  const texture_beam = new THREE.TextureLoader().load('/textures/metal_beam.jpg')
-  texture_beam.wrapS = THREE.RepeatWrapping
-  texture_beam.wrapT = THREE.RepeatWrapping
-  texture_beam.repeat.set(2, 2)
-
-  const texture_alum = new THREE.TextureLoader().load('/textures/aluminium.jpg')
-  texture_beam.wrapS = THREE.RepeatWrapping
-  texture_beam.wrapT = THREE.RepeatWrapping
-  texture_beam.repeat.set(1, 1)
-
-  const texture_gl = new THREE.TextureLoader().load('/textures/uv_grid_opengl.jpg')
-  texture_beam.wrapS = THREE.RepeatWrapping
-  texture_beam.wrapT = THREE.RepeatWrapping
-  texture_beam.repeat.set(1, 1)
-
-  const texture_hull = new THREE.TextureLoader().load('/textures/hull.jpg')
-  texture_beam.wrapS = THREE.RepeatWrapping
-  texture_beam.wrapT = THREE.RepeatWrapping
-  texture_beam.repeat.set(1, 1)
-
-
 let scene = new THREE.Scene()
-let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000)
+let scene2 = new THREE.Scene()
 
-const light = new THREE.AmbientLight(0x404040, 2);
-scene.add(light);
+scene.add(new THREE.AmbientLight(0x404040, 2))
+scene2.add(new THREE.AmbientLight(0x404040, 2))
 
 let ship = new Ship()
 window._ship = ship
@@ -1261,25 +1354,60 @@ new Tank().do_place(ship, Vec3(1, 1, 0))
   new Engine().do_place(ship, Vec3(-1, -0.21999999999999997, 0))
 
 
-function ship_draw() {
-  if (ship_group) scene.remove(ship_group)
-  ship_group = ship.draw()
-  scene.add(ship_group)
-}
-
-let ship_group
-ship_draw()
+let camera = new THREE.PerspectiveCamera(25, window.innerWidth / window.innerHeight, 0.1, 1000)
+let camera2 = new THREE.PerspectiveCamera(25, 1, 0.1, 1000)
 
 let renderer = new THREE.WebGLRenderer()
-renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.domElement.classList.add('canvas-main')
 document.body.appendChild(renderer.domElement)
+
+let renderer2 = new THREE.WebGLRenderer({ alpha: true })
+renderer2.domElement.classList.add('canvas-preview')
+renderer2.setClearColor(0x333333, 0.5);
+document.body.appendChild(renderer2.domElement)
 
 let controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true
-controls.minDistance = 1
-controls.maxDistance = 10
-controls.target.set(0, 0.5, 0)
+controls.minDistance = 20
+controls.maxDistance = Infinity
+controls.zoomSpeed = .5
+/*controls.minPolarAngle = Math.PI / 6
+controls.maxPolarAngle = Math.PI - Math.PI / 6
+controls.minAzimuthAngle = -Math.PI / 2 + Math.PI / 6
+controls.maxAzimuthAngle = Math.PI / 2 - Math.PI / 6*/
+controls.target.set(0, 20, 0)
 controls.update()
+
+let controls2 = new OrbitControls(camera2, renderer2.domElement)
+controls2.enableDamping = true
+controls2.minDistance = 10
+controls2.maxDistance = 30
+controls2.target.set(-1, 0.5, -1)
+controls2.autoRotate = true
+controls2.autoRotateSpeed = .2
+controls2.update()
+
+let ship_group
+let ship_group2
+function ship_draw() {
+  if (ship_group) scene.remove(ship_group)
+  ship_group = ship.draw('main')
+  if (ship_group2) scene2.remove(ship_group2)
+  ship_group2 = ship.draw('side')
+  scene.add(ship_group)
+  scene2.add(ship_group2)
+ // controls.target.set(ship.center)
+  //controls2.target.set(ship.center)
+}
+
+ship_draw()
+
+controls.target.x = ship.center.x
+controls.target.y = ship.center.y
+controls.target.z = ship.center.z
+controls2.target.x = ship.center.x
+controls2.target.y = ship.center.y
+controls2.target.z = ship.center.z
 
 let selected_mesh
 let selected_placeable
@@ -1288,10 +1416,33 @@ let highlighted = new Set()
 
 camera.position.z = 5
 
+let date = 0
 function animate() {
   requestAnimationFrame(animate)
+
+  ship.tick()
   renderer.render(scene, camera)
+  renderer2.render(scene2, camera2)
+
+  controls.target.x = (ship.center.x * 1 + controls.target.x * 63) / 64
+  controls.target.y = (ship.center.y * 1 + controls.target.y * 63) / 64
+  controls.target.z = (ship.center.z * 1 + controls.target.z * 63) / 64
+
+  controls.minDistance = Math.max(ship.max_size, 5)
+  controls.maxDistance = Math.max(ship.max_size, 5) * 8
+
+  controls2.target.x = (ship.center.x * 1 + controls2.target.x * 255) / 256
+  controls2.target.y = (ship.center.y * 1 + controls2.target.y * 255) / 256
+  controls2.target.z = (ship.center.z * 1 + controls2.target.z * 255) / 256
+
+  controls2.minDistance = Math.max(ship.max_size, 5) * 3
+  controls2.maxDistance = Math.max(ship.max_size, 5) * 8
+
   controls.update()
+  controls2.update()
+
+  //console.log(Date.now() - date)
+  date = Date.now()
 }
 animate()
 
@@ -1424,7 +1575,7 @@ function select_class(placeable_class, ...args) {
 
     selected_placeable = new placeable_class(...args)
 
-    selected_mesh = selected_placeable.draw()
+    selected_mesh = selected_placeable.draw('overlay')
 
     scene.add(selected_mesh)
 
@@ -1478,7 +1629,7 @@ document.getElementsByClassName('icon-exchange')[0].click()
 document.addEventListener('keydown', ev => {
   let action = false
 
-  if (ev.key === 'ArrowLeft') {
+/*  if (ev.key === 'ArrowLeft') {
     camera.position.x -= .2
     action = true
   } else if (ev.key === 'ArrowRight') {
@@ -1490,7 +1641,8 @@ document.addEventListener('keydown', ev => {
   } else if (ev.key === 'ArrowDown') {
     camera.position.y += .2
     action = true
-  } else if (ev.code === 'Escape') {
+  } else */
+  if (ev.code === 'Escape') {
     action = true
   }
 
@@ -1507,11 +1659,16 @@ document.addEventListener('wheel', ev => {
   camera.position.z += ev.deltaY / 200
 })
 
-window.addEventListener('resize', () => {
+function onresize() {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
-})
+  let size = Math.min(window.innerWidth, window.innerHeight)
+  renderer2.setSize(size/2, size/2)
+}
+
+window.addEventListener('resize', onresize)
+onresize()
 
 //scene.add(pipe_mgr.draw(pipe_mgr.pathfind(Vec3(.25,.25,.25), Vec3(-.25,1.75,-.25))))
 //scene.add(pipe_mgr.draw([Vec3(.25,.25,.25), Vec3(-.25,1.75,-.25)]))
