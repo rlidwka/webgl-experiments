@@ -35,7 +35,9 @@
     <div class="popover popover-tank">
       <div class="popover-header">Storage Tank</div>
       <div class="popover-control">Contents:</div>
-      <div class="popover-control" data-bind="text: contents_text, visible: full()"></div>
+      <div class="popover-control" data-bind="visible: full()">
+        <span data-bind="text: contents_text"></span><span data-bind="class: matter_class"></span>
+      </div>
       <select class="popover-control popover-tank-contents"
         data-bind="value: contents, options: fuel_types, optionsValue: 'name', optionsText: 'value', valueAllowUnset: true, visible: !full()">
       </select>

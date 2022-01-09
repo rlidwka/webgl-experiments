@@ -8,13 +8,14 @@ import { LineGeometry } from './node_modules/three/examples/jsm/lines/LineGeomet
 import './node_modules/knockout/build/output/knockout-latest.js'
 
 const fuel_types = {
-  h2:     { text: 'H₂',     color: '#ffffff' },
-  o2:     { text: 'O₂',     color: '#f40200' },
-  h2o:    { text: 'H₂O',    color: '#2389da' },
-  ch4:    { text: 'CH₄',    color: '#007035' },
-  c2h5oh: { text: 'C₂H₅OH', color: '#76d2c3' },
-  n2h4:   { text: 'N₂H₄',   color: '#2063ff' },
-  nh3:    { text: 'NH₃',    color: '#908905' }
+  h2:     { text: 'H₂',     color: '#ffffff', melt:  14.01, boil:  20.28 },
+  o2:     { text: 'O₂',     color: '#f40200', melt:  54.36, boil:  90.19 },
+  h2o:    { text: 'H₂O',    color: '#2389da', melt: 273.15, boil: 373.15 },
+  ch4:    { text: 'CH₄',    color: '#007035', melt:  90.55, boil: 111.51 },
+  c2h4:   { text: 'C₂H₄',   color: '#3e3e3e', melt: 104.15, boil: 169.00 },
+  c2h5oh: { text: 'C₂H₅OH', color: '#76d2c3', melt: 159.05, boil: 351.65 },
+  n2h4:   { text: 'N₂H₄',   color: '#2063ff', melt: 275.15, boil: 386.65 },
+  nh3:    { text: 'NH₃',    color: '#908905', melt: 195.40, boil: 239.81 }
 }
 
 let active_popovers = new Set()
@@ -65,6 +66,15 @@ let tank_popover = new class TankPopover extends Popover {
     this.data.contents    = ko.observable()
     this.data.temperature = ko.observable()
     this.data.full        = ko.observable()
+    this.data.matter_class = ko.computed(() => {
+      let type = fuel_types[this.data.contents()]
+      let temp = this.data.temperature() + 273.15
+      if (type) {
+        if (temp >= type.boil) return 'icon-cloud'
+        if (temp >= type.melt) return 'icon-droplet'
+        return 'icon-cube'
+      }
+    })
 
     this.data.contents_text = ko.computed(() => fuel_types[this.data.contents()]?.text)
 
@@ -108,16 +118,23 @@ let pipe_mgr = new class PipeManager {
   }
 
   click(pos, vox) {
-    this.reset()
+    if (vox?.contains instanceof Stairs) {
+      vox.contains.click()
+      this.start && this.start.vox.contains.highlight(0xa3f0ff)
+      return
+    }
+
+    let plist = vox?.contains?.can_connect?.(pos)
+    if (!plist) return
+    if (!plist.size) return
+
+    this.reset_mesh()
 
     if (!this.start) {
       this.start = { pos, vox }
-      this.from_set = new Set()
-      for (let dx of [ -.25, .25 ]) 
-        for (let dy of [ -.25, .25 ])
-          for (let dz of [ -.25, .25 ]) {
-            this.from_set.add(vec2str(Vec3(pos.x + dx, pos.y + dy, pos.z + dz)))
-          }
+      this.from_set = plist
+      vox.contains.highlight(0xa3f0ff)
+      highlighted.delete(vox.contains)
       return
     }
 
@@ -125,70 +142,110 @@ let pipe_mgr = new class PipeManager {
       this.start = null
       return
     }
+
+    let to_set = vox.contains.can_connect(pos)
+    if (!to_set) return
+
+    let path = pipe_mgr.pathfind(this.from_set, to_set, this.start.vox.contains, vox.contains)
+    if (!path) return
+
+    this.start = null
+    new Pipe(path).do_place(ship)
+    ship_draw()
   }
 
-  reset() {
+  reset_mesh() {
     if (this.mesh) {
       scene.remove(this.mesh)
       this.mesh = null
     }
   }
 
+  reset_all() {
+    this.reset_mesh()
+    this.start?.vox?.contains?.highlight?.(false)
+    this.start = null
+  }
+
   move(pos, vox) {
-    this.reset()
+    this.reset_mesh()
+
+    if (vox?.contains) {
+      if (vox?.contains instanceof Stairs) {
+        vox.contains.highlight(0x00aa00)
+        highlighted.add(vox.contains)
+      } else if (vox.contains.can_connect?.(pos)?.size) {
+        vox.contains.highlight(this.start ? 0xa3f0ff : 0x00aa00)
+        highlighted.add(vox.contains)
+        renderer.domElement.style.cursor = 'pointer'
+      }
+    }
+
     if (!vox?.deck) return
     if (!this.start) return
+
+    renderer.domElement.style.cursor = 'grabbing'
+    this.start.vox.contains.highlight(0xa3f0ff)
+    highlighted.delete(this.start.vox.contains)
+
     if (vox.contains?.equals(this.start.vox.contains)) return
 
     let to_set = new Set()
-    for (let dx of [ -.25, .25 ]) 
-      for (let dy of [ -.25, .25 ])
-        for (let dz of [ -.25, .25 ]) {
-          to_set.add(vec2str(Vec3(pos.x + dx, pos.y + dy, pos.z + dz)))
-        }
 
-    let path = pipe_mgr.pathfind(this.from_set, to_set)
+    if (vox.contains) {
+      to_set = vox.contains?.can_connect(pos)
+    } else {
+      for (let dx of [ -.25, .25 ]) 
+        for (let dy of [ -.25, .25 ])
+          for (let dz of [ -.25, .25 ]) {
+            if (!vox.contains || vox.pipes[vec2str(Vec3(dx, dy, dz))]) continue
+            to_set.add(vec2str(Vec3(pos.x + dx, pos.y + dy, pos.z + dz)))
+          }
+    }
+
+    let path = pipe_mgr.pathfind(this.from_set, to_set, this.start.vox.contains, vox.contains)
     if (!path) return
 
     this.mesh = new Pipe(path).draw(path)
     scene.add(this.mesh)
   }
 
-  is_free(pos_f, to_set) {
+  is_free(pos_f, to_set, from, to) {
     if (to_set.has(vec2str(pos_f))) return true
 
     let pos = pos_f.clone().round()
     let vox = ship.maybe_voxel(pos.x, pos.y, pos.z)
     if (!vox) return false
     if (!vox.deck) return false
-    if (vox.contains) return false
+    if (vox.contains && vox.contains !== from && vox.contains !== to) return false
+    if (vox.pipes[vec2str(pos_f.clone().sub(pos))]) return false
     return true
   }
 
-  get_adjacent(pos_f, to_set) {
+  get_adjacent(pos_f, to_set, from, to) {
     let pos = pos_f.clone().round()
     let result = new Set()
     let vec
 
     vec = Vec3(pos_f.x - .5, pos_f.y, pos_f.z)
-    if (this.is_free(vec, to_set)) result.add(vec)
+    if (this.is_free(vec, to_set, from, to)) result.add(vec)
     vec = Vec3(pos_f.x + .5, pos_f.y, pos_f.z)
-    if (this.is_free(vec, to_set)) result.add(vec)
+    if (this.is_free(vec, to_set, from, to)) result.add(vec)
 
     vec = Vec3(pos_f.x, pos_f.y - .5, pos_f.z)
-    if (this.is_free(vec, to_set)) result.add(vec)
+    if (this.is_free(vec, to_set, from, to)) result.add(vec)
     vec = Vec3(pos_f.x, pos_f.y + .5, pos_f.z)
-    if (this.is_free(vec, to_set)) result.add(vec)
+    if (this.is_free(vec, to_set, from, to)) result.add(vec)
 
     vec = Vec3(pos_f.x, pos_f.y, pos_f.z - .5)
-    if (this.is_free(vec, to_set)) result.add(vec)
+    if (this.is_free(vec, to_set, from, to)) result.add(vec)
     vec = Vec3(pos_f.x, pos_f.y, pos_f.z + .5)
-    if (this.is_free(vec, to_set)) result.add(vec)
+    if (this.is_free(vec, to_set, from, to)) result.add(vec)
 
     return result
   }
 
-  pathfind(from_set, to_set) {
+  pathfind(from_set, to_set, from, to) {
     let visited = new Set()
     let tentative = new Set()
     let distances = new Map()
@@ -220,7 +277,7 @@ let pipe_mgr = new class PipeManager {
 
       let current = Vec3(...current_s.split(':').map(Number))
 
-      for (let vec of this.get_adjacent(current, to_set)) {
+      for (let vec of this.get_adjacent(current, to_set, from, to)) {
         let s = vec2str(vec)
         let vecdist = distances.has(s) ? distances.get(s) : Infinity
         if (vecdist > currdist + 1) {
@@ -249,6 +306,7 @@ let pipe_mgr = new class PipeManager {
 
 class Pipe {
   constructor(path) {
+    this.draw_id = 0
     this.path = path
   }
 
@@ -260,7 +318,19 @@ class Pipe {
     }
   }
 
+  do_remove() {
+    for (let p of this.path) {
+      let vec = p.clone().round()
+      ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
+      delete ship.get_voxel(vec.x, vec.y, vec.z).pipes[vec2str(p.clone().sub(vec))]
+    }
+  }
+
   draw(id = 0, vec = null) {
+    if (id && id === this.draw_id) return
+
+    this.draw_id = id
+
     let geometry = new LineGeometry()
 
     let positions = []
@@ -271,11 +341,16 @@ class Pipe {
       colors.push(1, 1, 1)
     }
 
+    positions = positions.map(x => {
+      let rx = Math.round(x)
+      return rx + (x - rx) / 2
+    })
+
     geometry.setPositions(positions)
     geometry.setColors(colors)
 
     let material = new LineMaterial({
-      color: 0xffffff,
+      color: 0x888888,
       linewidth: .05,
       vertexColors: true,
       alphaToCoverage: true,
@@ -305,6 +380,10 @@ class Ship {
   }
 
   clean_voxel(x, y, z) {
+    let pipes = new Set()
+    for (let p of Object.values(this._voxels[z][x][y].pipes)) pipes.add(p)
+    for (let p of pipes) p.do_remove()
+
     if (this._voxels[z][x][y].contains) return
     if (this._voxels[z][x][y].drawables.size) return
     delete this._voxels[z][x][y]
@@ -319,7 +398,11 @@ class Ship {
   }
 
   is_empty(x, y, z) {
-    return !this._voxels[z]?.[x]?.[y]?.contains
+    let v = this._voxels[z]?.[x]?.[y]
+    if (!v) return true
+    if (v.contains) return false
+    if (Object.keys(v.pipes).length !== 0) return false
+    return true
   }
 
   each(fn) {
@@ -793,8 +876,10 @@ class Stairs extends Placeable {
     let vec = this.position
     delete ship.get_voxel(vec.x, vec.y, vec.z).contains
     ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
+    ship.clean_voxel(vec.x, vec.y, vec.z)
     delete ship.get_voxel(vec.x, vec.y, vec.z + this.direction).contains
     ship.get_voxel(vec.x, vec.y, vec.z + this.direction).drawables.delete(this)
+    ship.clean_voxel(vec.x, vec.y, vec.z + this.direction)
   }
 
   draw(id = 0, vec = null) {
@@ -832,7 +917,19 @@ class Engine extends Placeable {
   }
 
   can_connect(vec) {
-    return true
+    let res = new Set()
+
+    if (!vec.clone().add(Vec3(0, -1, 0)).equals(this.position)) return res
+    let vox = ship.get_voxel(vec.x, vec.y, vec.z)
+
+    for (let dx of [ -.25, .25 ]) 
+      for (let dy of [ -.25, .25 ])
+        for (let dz of [ -.25, .25 ]) {
+          if (vox.pipes[vec2str(Vec3(dx, dy, dz))]) continue
+          res.add(vec2str(Vec3(vec.x + dx, vec.y + dy, vec.z + dz)))
+        }
+
+    return res
   }
 
   can_place(ship, vec) {
@@ -918,7 +1015,19 @@ class Tank extends Placeable {
   }
 
   can_connect(vec) {
-    return true
+    let res = new Set()
+
+    if (!vec.equals(this.position)) return res
+    let vox = ship.get_voxel(vec.x, vec.y, vec.z)
+
+    for (let dx of [ -.25, .25 ]) 
+      for (let dy of [ -.25, .25 ])
+        for (let dz of [ -.25 ]) {
+          if (vox.pipes[vec2str(Vec3(dx, dy, dz))]) continue
+          res.add(vec2str(Vec3(vec.x + dx, vec.y + dy, vec.z + dz)))
+        }
+
+    return res
   }
 
   can_place(ship, vec) {
@@ -982,6 +1091,7 @@ class Tank extends Placeable {
     let vec = this.position
     delete ship.get_voxel(vec.x, vec.y, vec.z).contains
     ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
+    ship.clean_voxel(vec.x, vec.y, vec.z)
 
     if (this.prev) {
       this.prev.next = null
@@ -1233,11 +1343,12 @@ document.addEventListener('click', ev => {
         }
       }
     } else if (selected_action === 'pipe') {
-      if (v?.contains) {
-        if (v.contains.can_connect) {
+      pipe_mgr.click(pos, v)
+      /*if (v?.contains) {
+        if (v.contains.can_connect?.(pos)?.size) {
           pipe_mgr.click(pos, v)
         }
-      }
+      }*/
     }
     return
   }
@@ -1282,17 +1393,11 @@ document.addEventListener('mousemove', ev => {
         }
       }
     } else if (selected_action === 'pipe') {
-      ship.each((vox, vec) => {
-        if (!vox.contains?.can_connect) return
-        vox.contains.highlight(0x00aa00)
-        highlighted.add(vox.contains)
-      })
-      if (v?.contains) {
-        if (v.contains.can_connect) {
-          v.contains.highlight(0xa3f0ff)
-          renderer.domElement.style.cursor = 'pointer'
-        }
-      }
+      //ship.each((vox, vec) => {
+      //  if (!vox.contains?.can_connect) return
+      //  vox.contains.highlight(0x00aa00)
+      //  highlighted.add(vox.contains)
+      //})
       pipe_mgr.move(pos, v)
     }
     return
@@ -1354,6 +1459,9 @@ let controls_fn = {
 
 document.getElementsByClassName('controls')[0].addEventListener('click', ev => {
   if (!ev.target.dataset.fn) return
+
+  pipe_mgr.reset_all()
+
   for (let x of Array.from(document.getElementsByClassName('controls')[0].getElementsByClassName('active'))) {
     x.classList.remove('active')
   }
