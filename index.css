@@ -85,3 +85,9 @@ body {
   bottom: 0;
   right: 0;
 }
+
+.canvas-preview-deck {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+}

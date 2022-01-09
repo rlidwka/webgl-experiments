@@ -449,8 +449,9 @@ class Ship {
     }
   }
 
-  armor(vox, vec, dx, dy, dz) {
-    if (vec.z + dz > ship.level) return
+  armor(mode, vox, vec, dx, dy, dz) {
+    if (mode === 'deck') return
+    if (vec.z + dz > ship.level && mode === 'main') return
     if (this.maybe_voxel(vec.x + dx, vec.y + dy, vec.z + dz)) return
 
     let matrix = new THREE.Matrix3()
@@ -564,9 +565,7 @@ class Ship {
   }
 
   draw(mode) {
-    let _level = ship.level
     let group = new THREE.Group()
-    if (mode !== 'main') ship.level = Infinity
 
     let size_min = Vec3(Infinity, Infinity, Infinity)
     let size_max = Vec3(-Infinity, -Infinity, -Infinity)
@@ -579,20 +578,20 @@ class Ship {
       if (size_max.y < vec.y) size_max.y = vec.y
       if (size_max.z < vec.z) size_max.z = vec.z
 
-      if (vec.z > ship.level) return
+      if (vec.z > ship.level && mode === 'main') return
       if (!vox.deck) return
       let mesh
-      mesh = this.armor(vox, vec, 0, 0, 1)
+      mesh = this.armor(mode, vox, vec, 0, 0, 1)
       if (mesh) group.add(mesh)
-      mesh = this.armor(vox, vec, 0, 0, -1)
+      mesh = this.armor(mode, vox, vec, 0, 0, -1)
       if (mesh) group.add(mesh)
-      mesh = this.armor(vox, vec, 0, 1, 0)
+      mesh = this.armor(mode, vox, vec, 0, 1, 0)
       if (mesh) group.add(mesh)
-      mesh = this.armor(vox, vec, 0, -1, 0)
+      mesh = this.armor(mode, vox, vec, 0, -1, 0)
       if (mesh) group.add(mesh)
-      mesh = this.armor(vox, vec, 1, 0, 0)
+      mesh = this.armor(mode, vox, vec, 1, 0, 0)
       if (mesh) group.add(mesh)
-      mesh = this.armor(vox, vec, -1, 0, 0)
+      mesh = this.armor(mode, vox, vec, -1, 0, 0)
       if (mesh) group.add(mesh)
     })
 
@@ -603,8 +602,10 @@ class Ship {
       2
     )
 
+    this.min_coords = size_min
+    this.max_coords = size_max
     if (Number.isFinite(size_min.x)) {
-      this.center = size_min.add(size_max).multiplyScalar(.5)
+      this.center = size_min.clone().add(size_max).multiplyScalar(.5)
     } else {
       this.center = Vec3(0, 0, 0)
     }
@@ -612,15 +613,14 @@ class Ship {
     let draw_id = Math.random()
 
     this.each((vox, vec) => {
-      if (vec.z > ship.level) return
+      if (vec.z > ship.level && mode === 'main') return
       for (let drawable of vox.drawables) {
         let mesh = drawable.draw(mode, draw_id, vec)
         if (mesh) group.add(mesh)
       }
     })
 
-    this.tick()
-    if (mode !== 'main') ship.level = _level
+    if (mode === 'main') this.tick()
 
     return group
   }
@@ -809,12 +809,21 @@ class Deck extends Placeable {
 
   draw(mode, id = 0, vec = null) {
     this.dfs_cache = null
-    if (!vec) {
+    if (mode === 'overlay') {
       let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
       let material = new THREE.MeshBasicMaterial()
       let mesh = new THREE.Mesh(geometry, material)
       this.mesh = mesh
 
+      return mesh
+    } else if (mode === 'deck') {
+      let geometry = new THREE.BoxGeometry(this.size, this.size, 1)
+      let material = new THREE.MeshBasicMaterial({ color: ship.level === vec.z ? 0x00aa00 : 0xaaaaaa })
+      let mesh = new THREE.Mesh(geometry, material)
+      mesh.position.x = vec.x
+      mesh.position.y = vec.y
+      mesh.position.z = vec.z
+      this.mesh_deck = mesh
       return mesh
     }
 
@@ -985,6 +994,7 @@ class Stairs extends Placeable {
   }
 
   draw(mode, id = 0, vec = null) {
+    if (mode === 'deck') return
     let stairs = models.stairs.scene.clone()
 
     stairs.scale.x = .4
@@ -1085,9 +1095,14 @@ class Engine extends Placeable {
       engine.position.add(vec)
     }
 
-    let material = new THREE.MeshBasicMaterial()
-
-    if (!vec) {
+    if (mode === 'overlay') {
+      let material = new THREE.MeshBasicMaterial()
+      engine.traverse(mesh => {
+        if (mesh.type !== 'Mesh') return
+        mesh.material = material
+      })
+    } else if (mode === 'deck') {
+      let material = new THREE.MeshBasicMaterial({ color: 0xaa0000 })
       engine.traverse(mesh => {
         if (mesh.type !== 'Mesh') return
         mesh.material = material
@@ -1238,6 +1253,7 @@ class Tank extends Placeable {
   }
 
   draw(mode, id = 0, vec = null) {
+    if (mode === 'deck') return
     if (this.next) return
 
     let height = 0
@@ -1310,9 +1326,11 @@ class Tank extends Placeable {
 
 let scene = new THREE.Scene()
 let scene2 = new THREE.Scene()
+let scene_deck = new THREE.Scene()
 
 scene.add(new THREE.AmbientLight(0x404040, 2))
 scene2.add(new THREE.AmbientLight(0x404040, 2))
+scene_deck.add(new THREE.AmbientLight(0x404040, 2))
 
 let ship = new Ship()
 window._ship = ship
@@ -1356,6 +1374,9 @@ new Tank().do_place(ship, Vec3(1, 1, 0))
 
 let camera = new THREE.PerspectiveCamera(25, window.innerWidth / window.innerHeight, 0.1, 1000)
 let camera2 = new THREE.PerspectiveCamera(25, 1, 0.1, 1000)
+let camera_deck = new THREE.OrthographicCamera(-5, 5, 5, -5, -10000, 10000)
+camera_deck.rotation.x = -Math.PI/2
+camera_deck.rotation.y = Math.PI/2
 
 let renderer = new THREE.WebGLRenderer()
 renderer.domElement.classList.add('canvas-main')
@@ -1366,11 +1387,16 @@ renderer2.domElement.classList.add('canvas-preview')
 renderer2.setClearColor(0x333333, 0.5);
 document.body.appendChild(renderer2.domElement)
 
+let renderer_deck = new THREE.WebGLRenderer({ alpha: true })
+renderer_deck.domElement.classList.add('canvas-preview-deck')
+renderer_deck.setClearColor(0x333333, 0.5);
+document.body.appendChild(renderer_deck.domElement)
+
 let controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true
 controls.minDistance = 20
 controls.maxDistance = Infinity
-controls.zoomSpeed = .5
+controls.zoomSpeed = 1
 /*controls.minPolarAngle = Math.PI / 6
 controls.maxPolarAngle = Math.PI - Math.PI / 6
 controls.minAzimuthAngle = -Math.PI / 2 + Math.PI / 6
@@ -1387,16 +1413,43 @@ controls2.autoRotate = true
 controls2.autoRotateSpeed = .2
 controls2.update()
 
+//let controls_deck = new OrbitControls(camera_deck, renderer_deck.domElement)
+//controls_deck.minDistance = 10
+//controls_deck.maxDistance = 30
+
 let ship_group
 let ship_group2
+let ship_group_deck
 function ship_draw() {
   if (ship_group) scene.remove(ship_group)
   ship_group = ship.draw('main')
   if (ship_group2) scene2.remove(ship_group2)
   ship_group2 = ship.draw('side')
+  if (ship_group_deck) scene_deck.remove(ship_group_deck)
+  ship_group_deck = ship.draw('deck')
   scene.add(ship_group)
   scene2.add(ship_group2)
- // controls.target.set(ship.center)
+  scene_deck.add(ship_group_deck)
+
+/*
+console.log( ship.min_coords.y, ship.max_coords.y,ship.center)
+//  camera_deck.position.x = ship.center.x
+  camera_deck.position.x = -100
+  camera_deck.position.y = ship.center.y
+  camera_deck.position.z = ship.center.z*/
+  let sizy = Math.max(ship.max_coords.y-ship.min_coords.y, (ship.max_coords.y-ship.min_coords.y)*3)/2
+  sizy++
+  camera_deck.position.y = ship.center.y
+  camera_deck.position.z = ship.center.z
+  camera_deck.left = -sizy
+  camera_deck.right = sizy
+  camera_deck.top = -sizy/3
+  camera_deck.bottom = sizy/3
+  console.log(camera_deck.position)
+  //camera_deck.top = ship.min_coords.z * 10
+  //camera_deck.bottom = ship.max_coords.z * 10
+  camera_deck.updateProjectionMatrix()
+  // controls.target.set(ship.center)
   //controls2.target.set(ship.center)
 }
 
@@ -1423,6 +1476,7 @@ function animate() {
   ship.tick()
   renderer.render(scene, camera)
   renderer2.render(scene2, camera2)
+  renderer_deck.render(scene_deck, camera_deck)
 
   controls.target.x = (ship.center.x * 1 + controls.target.x * 63) / 64
   controls.target.y = (ship.center.y * 1 + controls.target.y * 63) / 64
@@ -1446,8 +1500,14 @@ function animate() {
 }
 animate()
 
+function simulate() {
+  setTimeout(simulate, 50)
+}
+simulate()
 
-function event_world_position(ev) {
+
+function event_world_position(ev, cam) {
+  if (!cam) cam = camera
   let pos = Vec3()
   let vec = Vec3()
   let zoffset = ship.level
@@ -1457,18 +1517,31 @@ function event_world_position(ev) {
     -(ev.clientY / window.innerHeight) * 2 + 1,
     0.5)
 
-  vec.unproject(camera)
+  vec.unproject(cam)
 
-  vec.sub(camera.position).normalize()
+  vec.sub(cam.position).normalize()
 
-  let distance = (zoffset - camera.position.z) / vec.z
+  let distance = (zoffset - cam.position.z) / vec.z
 
-  pos.copy(camera.position).add(vec.multiplyScalar(distance))
+  pos.copy(cam.position).add(vec.multiplyScalar(distance))
 
   return pos
 }
 
 document.addEventListener('click', ev => {
+  if (ev.target === renderer_deck.domElement) {
+    let pos = Vec3()
+    let vec = Vec3()
+    vec.set(
+      (ev.offsetX / renderer_deck.domElement.width) * 2 - 1,
+      -(ev.offsetY / renderer_deck.domElement.height) * 2 + 1,
+      0.5)
+    vec.unproject(camera_deck).round()
+    if (ship._voxels[vec.z]) ship.level = vec.z
+    ship_draw()
+    return
+  }
+
   if (ev.target !== renderer.domElement) return
   for (let x of Array.from(document.getElementsByClassName('show'))) x.classList.remove('show')
 
@@ -1513,7 +1586,38 @@ document.addEventListener('click', ev => {
   }  
 })
 
+
+renderer_deck.domElement.addEventListener('mouseleave', () => {
+  let act = new THREE.Color(0x00aa00)
+  let norm = new THREE.Color(0xaaaaaa)
+  ship.each((vox, vec) => {
+    if (vox.deck) {
+      vox.deck.mesh_deck.material.color = (ship.level === vec.z ? act : norm)
+    }
+  })
+})
+
 document.addEventListener('mousemove', ev => {
+  if (ev.target === renderer_deck.domElement) {
+    let pos = Vec3()
+    let vec = Vec3()
+    vec.set(
+      (ev.offsetX / renderer_deck.domElement.width) * 2 - 1,
+      -(ev.offsetY / renderer_deck.domElement.height) * 2 + 1,
+      0.5)
+    vec.unproject(camera_deck).round()
+    let act = new THREE.Color(0x00aa00)
+    let norm = new THREE.Color(0xaaaaaa)
+    let hili = new THREE.Color(0xa3f0ff)
+    ship.each((vox, xvec) => {
+      if (vox.deck) {
+        vox.deck.mesh_deck.material.color = vec.z === xvec.z ? hili : (ship.level === xvec.z ? act : norm)
+      }
+    })
+    renderer_deck.domElement.style.cursor = 'pointer'
+    return
+  }
+
   for (let h of highlighted) h.highlight(false)
   highlighted = new Set()
 
@@ -1652,19 +1756,23 @@ document.addEventListener('keydown', ev => {
   }
 })
 
-document.addEventListener('wheel', ev => {
+/*document.addEventListener('wheel', ev => {
   if (ev.target !== renderer.domElement) return
   renderer.domElement.style.cursor = 'default'
   for (let x of active_popovers) x.hide()
-  camera.position.z += ev.deltaY / 200
-})
+  //camera.position.z += ev.deltaY / 200
+})*/
 
 function onresize() {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
+
   let size = Math.min(window.innerWidth, window.innerHeight)
   renderer2.setSize(size/2, size/2)
+
+  renderer_deck.setSize(size/2, size/6)
+  renderer_deck.domElement.style.bottom = (size/2) + 'px'
 }
 
 window.addEventListener('resize', onresize)
