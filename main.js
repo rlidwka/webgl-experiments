@@ -2166,7 +2166,7 @@ document.getElementsByClassName('controls')[0].addEventListener('click', ev => {
   ev.target.classList.add('active')
 })
 
-document.getElementsByClassName('icon-exchange')[0].click()
+document.getElementsByClassName('icon-block-1')[0].click()
 
 document.addEventListener('keydown', ev => {
   let action = false
