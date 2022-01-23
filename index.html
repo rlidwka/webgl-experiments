@@ -27,6 +27,7 @@
       <button data-fn="block-3" class="btn icon-block-3" title="Structural Beam (3x3)"></button>
       <button data-fn="engine" class="btn icon-sun-filled" title="Main Rocket Engine"></button>
       <button data-fn="tank" class="btn icon-water" title="Storage Tank"></button>
+      <button data-fn="laser" class="btn icon-empire" title="HF Laser"></button>
       <button data-fn="level-up" class="btn icon-level-up" title="Upper Deck"></button>
       <button data-fn="level-down" class="btn icon-level-down" title="Lower Deck"></button>
       <button data-fn="pipe" class="btn icon-exchange" title="Connect fluids"></button>
@@ -47,6 +48,34 @@
       <input type="range" class="popover-control popover-tank-temp-range" min="-270" max="100" step="10" value="20" data-bind="value: temperature, valueUpdate: 'input', visible: !full()">
       <div class="btn popover-control" data-bind="click: fill, visible: !full()">Fill</div>
       <div class="btn popover-control" data-bind="click: empty, visible: full()">Empty</div>
+    </div>
+    <div class="popover popover-laser">
+      <div class="popover-header">HF Laser</div>
+      <div class="popover-control">Status:</div>
+      <div class="popover-control" data-bind="text: status, css: { good: status()==='OK', bad: !status()!=='OK' }"></div>
+      <div data-bind="visible: inputs().length">
+        <div class="popover-control">Inputs:</div>
+        <div data-bind="foreach: inputs">
+          <div class="popover-control">
+            <span data-bind="text: contents_text, css: { good: type_good, bad: !type_good }"></span><span data-bind="class: matter_class, css: { good: temp_good, bad: !temp_good }"></span>
+          </div>
+        </div>
+      </div>
+      <!--<div class="btn popover-control" data-bind="click: fire">Fire</div>-->
+    </div>
+    <div class="popover popover-engine">
+      <div class="popover-header">Main Engine</div>
+      <div class="popover-control">Status:</div>
+      <div class="popover-control" data-bind="text: status, css: { good: status()==='OK', bad: !status()!=='OK' }"></div>
+      <div data-bind="visible: inputs().length">
+        <div class="popover-control">Inputs:</div>
+        <div data-bind="foreach: inputs">
+          <div class="popover-control">
+            <span data-bind="text: contents_text, css: { good: type_good, bad: !type_good }"></span><span data-bind="class: matter_class, css: { good: temp_good, bad: !temp_good }"></span>
+          </div>
+        </div>
+      </div>
+      <!--<div class="btn popover-control" data-bind="click: fire">Fire</div>-->
     </div>
     <script src="main.js" type="module"></script>
   </body>

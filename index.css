@@ -91,3 +91,11 @@ body {
   bottom: 0;
   right: 0;
 }
+
+.bad {
+  color: red;
+}
+
+.good {
+  color: green;
+}

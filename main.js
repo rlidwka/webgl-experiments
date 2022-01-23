@@ -8,7 +8,7 @@ import { LineGeometry } from './node_modules/three/examples/jsm/lines/LineGeomet
 import './node_modules/knockout/build/output/knockout-latest.js'
 
 const fuel_types = {
-  h2:     { text: 'H₂',     color: '#ffffff', melt:  14.01, boil:  20.28 },
+  h2:     { text: 'H₂',     color: '#ffffff', melt:  12.01/*14.01*/, boil:  20.28 },
   o2:     { text: 'O₂',     color: '#f40200', melt:  54.36, boil:  90.19 },
   h2o:    { text: 'H₂O',    color: '#2389da', melt: 273.15, boil: 373.15 },
   ch4:    { text: 'CH₄',    color: '#007035', melt:  90.55, boil: 111.51 },
@@ -25,7 +25,7 @@ function Vec3(x, y, z) {
   return new THREE.Vector3(x, y, z)
 }
 
-await Promise.all([ 'engine', 'tank', 'stairs' ].map(file => {
+await Promise.all([ 'engine', 'tank', 'stairs', 'laser' ].map(file => {
   return new Promise(resolve => {
     new GLTFLoader()
       .load(`models/${file}.glb`, function (gltf) {
@@ -36,11 +36,12 @@ await Promise.all([ 'engine', 'tank', 'stairs' ].map(file => {
 }))
 
 let textures = {}
-for (let path of [ 'metal', 'metal_beam', 'aluminium', 'hull', 'pvc_solid' ]) {
+for (let path of [ 'metal', 'metal_beam', 'aluminium', 'hull', 'pvc_solid', 'hex', 'scifi' ]) {
   textures[path] = new THREE.TextureLoader().load('/textures/' + path + '.jpg')
   textures[path].wrapS = THREE.RepeatWrapping
   textures[path].wrapT = THREE.RepeatWrapping
   textures[path].repeat.set(1, 1)
+  if (path==='hex') textures[path].repeat.set(5, 5)
 }
 /*  texture.repeat.set(2, 2)
 
@@ -78,6 +79,60 @@ class Popover {
   hide() {
     this.element.classList.remove('show')
     active_popovers.delete(this)
+    this.onclose?.()
+  }
+}
+
+class LiquidBox {
+  constructor(max) {
+    this.type      = null
+    this.value     = 0
+    this.max       = max
+    this.temp      = 20 + 273.15
+    this.elevation = 0
+  }
+
+  phase() {
+    let type = fuel_types[this.type]
+    if (type && this.temp >= type.boil) return 'gas'
+    if (type && this.temp >= type.melt) return 'liquid'
+    return 'solid'
+  }
+
+  equalize(lbox) {
+    if (!this.type && !lbox.type) return
+    if (this.type && lbox.type && lbox.type !== this.type) return
+
+    let src, dst
+    let p1 = (this.value / this.max) + this.elevation
+    let p2 = (lbox.value / lbox.max) + lbox.elevation
+
+    if (p1 > p2) {
+      src = this
+      dst = lbox
+    } else if (p1 < p2) {
+      src = lbox
+      dst = this
+    } else {
+      return
+    }
+
+    let amount = Math.min(this.max, lbox.max) / 16
+    if (amount > src.value) amount = src.value
+
+    if (!dst.type) {
+      dst.type = src.type
+      dst.value = 0
+      //dst.temp = src.temp
+    }
+
+    dst.value += amount
+    src.value -= amount
+
+    if (!src.value) {
+      src.type = null
+      //src.temp = 20 + 273.15
+    }
   }
 }
 
@@ -93,7 +148,7 @@ let tank_popover = new class TankPopover extends Popover {
     this.data.full        = ko.observable()
     this.data.matter_class = ko.computed(() => {
       let type = fuel_types[this.data.contents()]
-      let temp = this.data.temperature() + 273.15
+      let temp = +this.data.temperature() + 273.15
       if (type) {
         if (temp >= type.boil) return 'icon-cloud'
         if (temp >= type.melt) return 'icon-droplet'
@@ -129,6 +184,44 @@ let tank_popover = new class TankPopover extends Popover {
   empty() {
     this.data.full(false)
     this.assign(null)
+  }
+}
+
+let laser_popover = new class LaserPopover extends Popover {
+  constructor() {
+    super('popover-laser')
+    this.assign = () => {}
+  }
+
+  init() {
+    this.data.fire = () => this.fire()
+    this.data.inputs = ko.observableArray([])
+    this.data.status = ko.observable()
+  }
+
+  reset(args) {
+    this.data.inputs(args.inputs)
+    this.data.status(args.status)
+  }
+
+  fire() {
+  }
+}
+
+let engine_popover = new class EnginePopover extends Popover {
+  constructor() {
+    super('popover-engine')
+    this.assign = () => {}
+  }
+
+  init() {
+    this.data.inputs = ko.observableArray([])
+    this.data.status = ko.observable()
+  }
+
+  reset(args) {
+    this.data.inputs(args.inputs)
+    this.data.status(args.status)
   }
 }
 
@@ -176,8 +269,10 @@ let pipe_mgr = new class PipeManager {
     let path = pipe_mgr.pathfind(this.from_set, to_set, this.start.vox.contains, vox.contains)
     if (!path) return
 
+    this.start.vox.contains.highlight(false)
+    vox.contains.highlight(false)
+    new Pipe(path).do_place(ship, this.start.vox.contains, vox.contains)
     this.start = null
-    new Pipe(path).do_place(ship)
     ship_draw()
   }
 
@@ -335,14 +430,25 @@ class Pipe {
   constructor(path) {
     this.draw_id = 0
     this.path = path
+    this.end1 = null
+    this.end2 = null
+    this.liquid = null
+    this.material = null
+    this.contents = []
   }
 
-  do_place(ship) {
+  do_place(ship, end1, end2) {
     for (let p of this.path) {
       let vec = p.clone().round()
       ship.get_voxel(vec.x, vec.y, vec.z).drawables.add(this)
       ship.get_voxel(vec.x, vec.y, vec.z).pipes[vec2str(p.clone().sub(vec))] = this
+      this.contents.push({})
     }
+    ship.pipes.add(this)
+    this.end1 = end1
+    this.end2 = end2
+    this.end1.pipes.add(this)
+    this.end2.pipes.add(this)
   }
 
   do_remove() {
@@ -351,6 +457,9 @@ class Pipe {
       ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
       delete ship.get_voxel(vec.x, vec.y, vec.z).pipes[vec2str(p.clone().sub(vec))]
     }
+    ship.pipes.delete(this)
+    this.end1.pipes.delete(this)
+    this.end2.pipes.delete(this)
   }
 
   draw(mode, id = 0, vec = null) {
@@ -384,7 +493,17 @@ class Pipe {
       worldUnits: true
     })
 
+    if (mode === 'main') this.material = material
+
     return new Line2(geometry, material)
+  }
+
+  draw_liquid() {
+    if (this.liquid?.type) {
+      this.material.color.set(fuel_types[this.liquid.type].color)
+    } else {
+      this.material.color.set(0x888888)
+    }
   }
 }
 
@@ -393,6 +512,8 @@ class Ship {
     // coordinates are: [ z, x, y ]
     this._voxels = {}
     this.level = 0
+    this.tanks = new Set()
+    this.pipes = new Set()
   }
 
   get_voxel(x, y, z) {
@@ -642,6 +763,8 @@ class Placeable {
     this.mesh = null
     this.position = null
     this.matmap = new Map()
+    this.pipes = new Set()
+    this.is_highlighted = false
   }
 
   clone() {
@@ -662,6 +785,7 @@ class Placeable {
   }
 
   highlight(color = null) {
+    this.is_highlighted = !!color
     let material = new THREE.MeshBasicMaterial({ color })
 
     material.opacity = 0.7
@@ -1029,6 +1153,59 @@ class Engine extends Placeable {
     this.offset = Vec3(0, 1 - .22, 0)
   }
 
+  click(ev) {
+    if (this.next) return this.next.click(ev)
+
+    engine_popover.fire = value => {
+      alert('foobar')
+    }
+
+    let h2=false, o2=false
+    let inputs = [...this.pipes].map(p=>p.liquid).map(liquid => {
+      liquid = {...liquid}
+      if (!liquid.type) return null
+      let type = fuel_types[liquid.type]
+      let temp = +liquid.temperature + 273.15
+      let matter_class = (() => {
+        if (temp >= type.boil) return 'icon-cloud'
+        if (temp >= type.melt) return 'icon-droplet'
+        return 'icon-cube'
+      })()
+      liquid.temp_good = matter_class === 'icon-droplet'
+      liquid.type_good = true
+
+      liquid.contents_text = type.text
+      liquid.matter_class = matter_class
+
+      if (liquid.type === 'o2') {
+        o2 ||= liquid.temp_good
+      } else if (liquid.type === 'h2') {
+        h2 ||= liquid.temp_good
+      } else {
+        liquid.temp_good = false
+        liquid.type_good = false
+      }
+
+      return liquid
+    }).filter(Boolean)
+
+    let status
+
+    if (!h2) {
+      status = 'Missing liquid fuel'
+    } else if (!o2) {
+      status = 'Missing oxidizer'
+    } else {
+      status = 'OK'
+    }
+
+    engine_popover.reset({
+      status: status,
+      inputs: inputs
+    })
+    engine_popover.show(ev.clientX, ev.clientY)
+  }
+
   can_connect(vec) {
     let res = new Set()
 
@@ -1133,6 +1310,7 @@ class Tank extends Placeable {
     this.prev = null
     this.next = null
     this.liquid = null
+    this.lbox = new LiquidBox(100)
   }
 
   equals(x) {
@@ -1187,6 +1365,10 @@ class Tank extends Placeable {
       this.liquid = value
       ship_draw()
     }
+    this.suspended = true
+    tank_popover.onclose = () => {
+      this.suspended = false
+    }
     tank_popover.reset(this.liquid)
     tank_popover.show(ev.clientX, ev.clientY)
   }
@@ -1211,6 +1393,7 @@ class Tank extends Placeable {
       this.liquid = next.contains.liquid
     }
 
+    ship.tanks.add(this)
     super.do_place(ship, vec)
   }
 
@@ -1219,6 +1402,7 @@ class Tank extends Placeable {
   }
 
   do_remove() {
+    ship.tanks.delete(this)
     if (this.next) return this.next.do_remove()
 
     let vec = this.position
@@ -1250,6 +1434,7 @@ class Tank extends Placeable {
   highlight(color = null) {
     if (this.next) return this.next.highlight(color)
     super.highlight(color)
+    if (!color) this.draw_liquid()
   }
 
   draw(mode, id = 0, vec = null) {
@@ -1301,15 +1486,12 @@ class Tank extends Placeable {
       }
 
       if (mesh.name === 'material') {
-        let material = new THREE.MeshBasicMaterial()
-        if (this.liquid) {
-          material.color.set(fuel_types[this.liquid.type].color)
-        }
+        let material = new THREE.MeshBasicMaterial({ transparent: true })
+        if (mode === 'main') this.liquid_mesh = mesh
 
         mesh.material = material
         mesh.position.z += height * 2
         mesh.scale.y *= 1 + height * 2
-        mesh.visible = !!this.liquid
         return
       }
 
@@ -1318,8 +1500,201 @@ class Tank extends Placeable {
 
     if (mode === 'overlay') this.mesh = tank
     if (mode === 'main') this.mesh = tank
+    if (mode === 'main') this.draw_liquid()
 
     return tank
+  }
+
+  draw_liquid() {
+    if (this.next) return
+    if (this.is_highlighted) return
+    /*if (this.lbox.type) {
+      this.liquid_mesh.material.color.set(fuel_types[this.lbox.type].color)
+      this.liquid_mesh.material.opacity = this.lbox.value / this.lbox.max
+      this.liquid_mesh.visible = true
+    } else {
+      this.liquid_mesh.visible = false
+    }*/
+    if (this.liquid?.type) {
+      this.liquid_mesh.material.color.set(fuel_types[this.liquid.type].color)
+      this.liquid_mesh.material.opacity = 1
+      this.liquid_mesh.visible = true
+    } else {
+      this.liquid_mesh.visible = false
+    }
+  }
+}
+
+class Laser extends Placeable {
+  constructor() {
+    super()
+    this.offset = Vec3(0, .3, 0)
+  }
+
+  can_connect(vec) {
+    let res = new Set()
+
+    if (!vec.clone().add(Vec3(this.is_left ? 1 : -1, 0, 0)).equals(this.position)) return res
+    let vox = ship.get_voxel(vec.x, vec.y, vec.z)
+
+    for (let dx of [ this.is_left ? .25 : -.25 ]) 
+      for (let dy of [ -.25, .25 ])
+        for (let dz of [ -.25, .25 ]) {
+          if (vox.pipes[vec2str(Vec3(dx, dy, dz))]) continue
+          res.add(vec2str(Vec3(vec.x + dx, vec.y + dy, vec.z + dz)))
+        }
+
+    return res
+  }
+
+  click(ev) {
+    if (this.next) return this.next.click(ev)
+
+    laser_popover.fire = value => {
+      alert('foobar')
+    }
+
+    let status = 'Missing chemfuel'
+    let inputs = [...this.pipes].map(p=>p.liquid).map(liquid => {
+      liquid = {...liquid}
+      if (!liquid.type) return null
+      let type = fuel_types[liquid.type]
+      let temp = +liquid.temperature + 273.15
+      let matter_class = (() => {
+        if (temp >= type.boil) return 'icon-cloud'
+        if (temp >= type.melt) return 'icon-droplet'
+        return 'icon-cube'
+      })()
+      liquid.temp_good = matter_class === 'icon-droplet'
+      liquid.type_good = true
+
+      liquid.contents_text = type.text
+      liquid.matter_class = matter_class
+
+      if (liquid.type !== 'c2h4') {
+        liquid.temp_good = false
+        liquid.type_good = false
+      }
+
+      if (liquid.temp_good && liquid.type_good) {
+        status = 'OK'
+      }
+      return liquid
+    }).filter(Boolean)
+
+    laser_popover.reset({
+      status: status,
+      inputs: inputs
+    })
+    laser_popover.show(ev.clientX, ev.clientY)
+  }
+
+  can_place(ship, vec) {
+    this.mesh.rotation.y = 0
+    vec = vec.clone().sub(this.offset).round()
+
+    if (ship.is_inside(vec.x, vec.y, vec.z)) return null
+    if (ship.is_inside(vec.x, vec.y + 1, vec.z)) return null
+
+    if (!ship.is_empty(vec.x, vec.y, vec.z)) return null
+    if (!ship.is_empty(vec.x, vec.y + 1, vec.z)) return null
+
+    if (ship.is_inside(vec.x + 1, vec.y, vec.z) && ship.is_empty(vec.x + 1, vec.y, vec.z)) {
+      this.mesh.rotation.y = 0
+    } else if (ship.is_inside(vec.x - 1, vec.y, vec.z) && ship.is_empty(vec.x - 1, vec.y, vec.z)) {
+      this.mesh.rotation.y = -Math.PI
+    } else {
+      return null
+    }
+
+    vec.add(this.offset)
+    return vec
+  }
+
+  do_place(ship, vec) {
+    vec = vec.clone().sub(this.offset)
+    this.position = vec
+
+    ship.get_voxel(vec.x, vec.y, vec.z).contains = this
+    ship.get_voxel(vec.x, vec.y, vec.z).drawables.add(this)
+    ship.get_voxel(vec.x, vec.y + 1, vec.z).contains = this
+
+    if (ship.is_inside(vec.x + 1, vec.y, vec.z) && ship.is_empty(vec.x + 1, vec.y, vec.z)) {
+      ship.get_voxel(vec.x + 1, vec.y, vec.z).contains = this
+      this.is_left = false
+    } else if (ship.is_inside(vec.x - 1, vec.y, vec.z) && ship.is_empty(vec.x - 1, vec.y, vec.z)) {
+      ship.get_voxel(vec.x - 1, vec.y, vec.z).contains = this
+      this.is_left = true
+    } else {
+      return null
+    }
+
+    super.do_place(ship, vec)
+  }
+
+  can_remove() {
+    return true
+  }
+
+  do_remove() {
+    let vec = this.position
+
+    delete ship.get_voxel(vec.x, vec.y, vec.z).contains
+    ship.get_voxel(vec.x, vec.y, vec.z).drawables.delete(this)
+    delete ship.get_voxel(vec.x, vec.y + 1, vec.z).contains
+    ship.clean_voxel(vec.x, vec.y, vec.z)
+    ship.clean_voxel(vec.x, vec.y + 1, vec.z)
+
+    if (this.is_left) {
+      delete ship.get_voxel(vec.x - 1, vec.y, vec.z).contains
+      ship.clean_voxel(vec.x - 1, vec.y, vec.z)
+    } else {
+      delete ship.get_voxel(vec.x + 1, vec.y, vec.z).contains
+      ship.clean_voxel(vec.x + 1, vec.y, vec.z)
+    }
+  }
+
+  draw(mode, id = 0, vec = null) {
+    let laser = models.laser.scene.clone()
+
+    laser.rotation.x = Math.PI
+    if (this.is_left) laser.rotation.y = -Math.PI
+    laser.scale.x = .44
+    laser.scale.y = .35
+    laser.scale.z = .4
+
+    if (vec) {
+      laser.position.add(this.offset)
+      laser.position.add(vec)
+    }
+
+    if (mode === 'overlay') {
+      let material = new THREE.MeshBasicMaterial()
+      laser.traverse(mesh => {
+        if (mesh.type !== 'Mesh') return
+        mesh.material = material
+      })
+    } else if (mode === 'deck') {
+      let material = new THREE.MeshBasicMaterial({ color: 0x4444aa })
+      laser.traverse(mesh => {
+        if (mesh.type !== 'Mesh') return
+        mesh.material = material
+      })
+    } else {
+      let material = new THREE.MeshBasicMaterial()
+      material.color.set(0x557755)
+      material.map = textures.hex
+
+      laser.traverse(mesh => {
+        if (mesh.type !== 'Mesh') return
+        mesh.material = material
+      })
+    }
+
+    if (mode === 'overlay') this.mesh = laser
+    if (mode === 'main') this.mesh = laser
+
+    return laser
   }
 }
 
@@ -1343,7 +1718,7 @@ new Tank().do_place(ship, Vec3(1, 1, 0))
 //new Tank().do_place(ship, Vec3(0, 1, 0))
 //new Tank().do_place(ship, Vec3(1, 2, 0))
 */
-
+/*
   new Deck(1).do_place(ship, Vec3(0, 0, 0))
   new Deck(1).do_place(ship, Vec3(1, 0, 0))
   new Deck(1).do_place(ship, Vec3(0, 1, 0))
@@ -1370,7 +1745,7 @@ new Tank().do_place(ship, Vec3(1, 1, 0))
   new Tank().do_place(ship, Vec3(0, 2, 0))
   new Tank().do_place(ship, Vec3(1, 2, 0))
   new Engine().do_place(ship, Vec3(-1, -0.21999999999999997, 0))
-
+*/
 
 let camera = new THREE.PerspectiveCamera(25, window.innerWidth / window.innerHeight, 0.1, 1000)
 let camera2 = new THREE.PerspectiveCamera(25, 1, 0.1, 1000)
@@ -1413,6 +1788,48 @@ controls2.autoRotate = true
 controls2.autoRotateSpeed = .2
 controls2.update()
 
+function update_pipes() {
+  let changed = false
+  for (let pipe of ship.pipes) {
+    let p1, p2
+    if (pipe.end1.suspended || pipe.end2.suspended) continue
+    if (pipe.end1 instanceof Tank && pipe.end2 instanceof Tank) {
+      let end1 = pipe.end1
+      let end2 = pipe.end2
+      while (end1.next) end1 = end1.next
+      while (end2.next) end2 = end2.next
+      if (end1.liquid && !end2.liquid) {
+        pipe.liquid = { ...end1.liquid }
+        end2.liquid = { ...end1.liquid }
+        end2.draw_liquid()
+      } else if (end2.liquid && !end1.liquid) {
+        pipe.liquid = { ...end2.liquid }
+        end1.liquid = { ...end2.liquid }
+        end1.draw_liquid()
+      } else if (end1.liquid && end2.liquid && end1.liquid.type === end2.liquid.type) {
+        pipe.liquid = { ...end2.liquid }
+      } else {
+        pipe.liquid = null
+      }
+    } else if (pipe.end1 instanceof Tank && !(pipe.end2 instanceof Tank)) {
+      p1 = pipe.end1
+      p2 = pipe.end2
+    } else if (pipe.end2 instanceof Tank && !(pipe.end1 instanceof Tank)) {
+      p1 = pipe.end2
+      p2 = pipe.end1
+    } else {
+      pipe.liquid = null
+    }
+
+    if (p1) {
+      while (p1.next) p1 = p1.next
+      pipe.liquid = { ...p1.liquid }
+    }
+
+    pipe.draw_liquid()
+  }
+}
+
 //let controls_deck = new OrbitControls(camera_deck, renderer_deck.domElement)
 //controls_deck.minDistance = 10
 //controls_deck.maxDistance = 30
@@ -1438,6 +1855,7 @@ console.log( ship.min_coords.y, ship.max_coords.y,ship.center)
   camera_deck.position.y = ship.center.y
   camera_deck.position.z = ship.center.z*/
   let sizy = Math.max(ship.max_coords.y-ship.min_coords.y, (ship.max_coords.y-ship.min_coords.y)*3)/2
+  if (sizy < 4) sizy = 4
   sizy++
   camera_deck.position.y = ship.center.y
   camera_deck.position.z = ship.center.z
@@ -1445,7 +1863,6 @@ console.log( ship.min_coords.y, ship.max_coords.y,ship.center)
   camera_deck.right = sizy
   camera_deck.top = -sizy/3
   camera_deck.bottom = sizy/3
-  console.log(camera_deck.position)
   //camera_deck.top = ship.min_coords.z * 10
   //camera_deck.bottom = ship.max_coords.z * 10
   camera_deck.updateProjectionMatrix()
@@ -1501,7 +1918,27 @@ function animate() {
 animate()
 
 function simulate() {
-  setTimeout(simulate, 50)
+/*  for (let t of ship.tanks) {
+    if (t.next) continue
+
+    let lbox = new LiquidBox(100)
+    if (t.liquid) {
+      lbox.type  = t.liquid.type
+      lbox.temp  = t.liquid.temp
+      lbox.value = Infinity
+    }
+
+    let tprev = t
+    while (tprev) {
+      lbox.equalize(tprev.lbox)
+      tprev = tprev.prev
+    }
+    t.draw_liquid()
+  }
+*/
+
+  update_pipes()
+  setTimeout(simulate, 500)
 }
 simulate()
 
@@ -1543,7 +1980,7 @@ document.addEventListener('click', ev => {
   }
 
   if (ev.target !== renderer.domElement) return
-  for (let x of Array.from(document.getElementsByClassName('show'))) x.classList.remove('show')
+  for (let x of active_popovers) x.hide()
 
   let pos = event_world_position(ev)
 
@@ -1708,6 +2145,7 @@ let controls_fn = {
   'block-3':    select_class(Deck, 3),
   'engine':     select_class(Engine),
   'tank':       select_class(Tank),
+  'laser':      select_class(Laser),
   'level-up':   select_class(Stairs, 1),
   'level-down': select_class(Stairs, -1),
 }
@@ -1722,7 +2160,7 @@ document.getElementsByClassName('controls')[0].addEventListener('click', ev => {
   }
 
   renderer.domElement.style.cursor = 'default'
-  for (let x of Array.from(document.getElementsByClassName('show'))) x.classList.remove('show')
+  for (let x of active_popovers) x.hide()
 
   controls_fn[ev.target.dataset.fn]()
   ev.target.classList.add('active')
