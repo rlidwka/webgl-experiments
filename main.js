@@ -37,7 +37,7 @@ await Promise.all([ 'engine', 'tank', 'stairs', 'laser' ].map(file => {
 
 let textures = {}
 for (let path of [ 'metal', 'metal_beam', 'aluminium', 'hull', 'pvc_solid', 'hex', 'scifi' ]) {
-  textures[path] = new THREE.TextureLoader().load('/textures/' + path + '.jpg')
+  textures[path] = new THREE.TextureLoader().load('textures/' + path + '.jpg')
   textures[path].wrapS = THREE.RepeatWrapping
   textures[path].wrapT = THREE.RepeatWrapping
   textures[path].repeat.set(1, 1)
